@@ -33,7 +33,10 @@ def user_auth(scope: list=None):
     })
     webbrowser.open(f'{endpoint}{params}')
 
-# Function to exchange authorization code for access token, only called after user authorization
+# Function to exchange the authorization code for an access token and refresh token.
+# This function should be called after the user has authorized the application and received an authorization code.
+# It sends a POST request to Spotify's token endpoint with the authorization code and retrieves the access and refresh tokens.
+# The tokens are then saved to files for later use.
 def exchange_auth_code(code: str):
     """
     Exchange the authorization code for an access token.
@@ -62,26 +65,44 @@ def exchange_auth_code(code: str):
             js = json.loads(content)
     except urllib.error.URLError as e:
         print(f"Failed to retrieve response from {req.full_url}: {e.reason}")
+        with open("temp/error_log.txt", "a") as error_log:
+            error_log.write(f"Failed to retrieve response from {req.full_url}: {e.reason}\n")
         return {}
     
     os.makedirs("temp", exist_ok=True)
-    # Save the access token to a file
-    with open("temp/access_token", "w") as access_token_file:
-        access_token_file.write(js['access_token'])
+    # Save the access token to a file if it exists
+    if 'access_token' in js:
+        with open("temp/access_token", "w") as access_token_file:
+            access_token_file.write(js['access_token'])
+    else:
+        print("Access token not found in the response")
 
-    with open("temp/refresh_token", "w") as refresh_token_file:
-        refresh_token_file.write(js['refresh_token'])
+    # Save the refresh token to a file if it exists
+    if 'refresh_token' in js:
+        with open("temp/refresh_token", "w") as refresh_token_file:
+            refresh_token_file.write(js['refresh_token'])
+    else:
+        print("Refresh token not found in the response")
 
     return js # Return the JSON response for debugging
 
 # Function to get the access token, either from a file or by refreshing the token
 def get_token():
+    """
+    Retrieve the access token, either from a file if it exists and is valid, or by refreshing it using the refresh token.
+
+    Returns:
+        str: The access token.
+    Raises:
+        FileNotFoundError: If the refresh token file does not exist.
+    """
     # Check if the access token exists and is less than an hour old
     if os.path.exists("temp/access_token"):
         time_diff = time.time() - os.path.getmtime("temp/access_token")
         print(f"Time difference: {time_diff}")
         if time_diff < 3600:
-            return open("temp/access_token", "r").read()
+            with open("temp/access_token", "r") as access_token_file:
+                return access_token_file.read()
 
     # Else refresh the token
     if not os.path.exists("temp/refresh_token"):
