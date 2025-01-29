@@ -1,5 +1,5 @@
 import urllib.request, urllib.error, urllib.parse
-import os, time, subprocess, ssl, json, webbrowser, base64
+import os, time, ssl, json, webbrowser, base64
 from dotenv import load_dotenv
 
 # Load the environment variables 
@@ -152,7 +152,6 @@ def get_user_saved(token):
     return items
 
 def login():
-    subprocess.Popen(["start", "cmd", "/k", "python localserver.py"], shell=True)
     user_auth(['user-library-read'])
     input("Press Enter after authorizing the application...")
     with open("temp/auth_token", "r") as file:
