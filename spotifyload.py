@@ -64,8 +64,6 @@ def exchange_auth_code(code: str):
             js = json.loads(content)
     except urllib.error.URLError as e:
         print(f"Failed to retrieve response from {req.full_url}: {e.reason}")
-        with open("temp/error_log.txt", "a") as error_log:
-            error_log.write(f"Failed to retrieve response from {req.full_url}: {e.reason}\n")
         return {}
     
     os.makedirs("temp", exist_ok=True)
@@ -224,4 +222,3 @@ if __name__ == "__main__":
 
     for track in tracks:
         print(f"{track['track']['name']} by {track['track']['artists'][0]['name']}")
-
