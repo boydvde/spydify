@@ -8,12 +8,15 @@ client_id = os.getenv('CLIENT_ID')
 client_secret = os.getenv('CLIENT_SECRET')
 redirect_uri = os.getenv('REDIRECT_URI')
 
+# Define file paths as constants
+ACCESS_TOKEN_PATH = "temp/access_token"
+REFRESH_TOKEN_PATH = "temp/refresh_token"
+
 # Create an SSL context to ignore certificate verification
 ctx = ssl.create_default_context()
 ctx.check_hostname = False
 ctx.verify_mode = ssl.CERT_NONE
 
-# Function to request user authorization in web browser
 def user_auth(scope: list=None):
     """
     Request user authorization in the web browser.
@@ -33,10 +36,6 @@ def user_auth(scope: list=None):
     })
     webbrowser.open(f'{endpoint}{params}')
 
-# Function to exchange the authorization code for an access token and refresh token.
-# This function should be called after the user has authorized the application and received an authorization code.
-# It sends a POST request to Spotify's token endpoint with the authorization code and retrieves the access and refresh tokens.
-# The tokens are then saved to files for later use.
 def exchange_auth_code(code: str):
     """
     Exchange the authorization code for an access token.
@@ -72,44 +71,44 @@ def exchange_auth_code(code: str):
     os.makedirs("temp", exist_ok=True)
     # Save the access token to a file if it exists
     if 'access_token' in js:
-        with open("temp/access_token", "w") as access_token_file:
+        with open(ACCESS_TOKEN_PATH, "w") as access_token_file:
             access_token_file.write(js['access_token'])
     else:
         print("Access token not found in the response")
 
     # Save the refresh token to a file if it exists
     if 'refresh_token' in js:
-        with open("temp/refresh_token", "w") as refresh_token_file:
+        with open(REFRESH_TOKEN_PATH, "w") as refresh_token_file:
             refresh_token_file.write(js['refresh_token'])
     else:
         print("Refresh token not found in the response")
 
     return js # Return the JSON response for debugging
 
-# Function to get the access token, either from a file or by refreshing the token
 def get_token():
     """
     Retrieve the access token, either from a file if it exists and is valid, or by refreshing it using the refresh token.
 
     Returns:
-        str: The access token.
+        str: The access token if retrieval is successful.
+        None: If the token retrieval fails.
     Raises:
         FileNotFoundError: If the refresh token file does not exist.
     """
     # Check if the access token exists and is less than an hour old
-    if os.path.exists("temp/access_token"):
-        time_diff = time.time() - os.path.getmtime("temp/access_token")
+    if os.path.exists(ACCESS_TOKEN_PATH):
+        time_diff = time.time() - os.path.getmtime(ACCESS_TOKEN_PATH)
         print(f"Time difference: {time_diff}")
         if time_diff < 3600:
-            with open("temp/access_token", "r") as access_token_file:
-                return access_token_file.read()
+            with open(ACCESS_TOKEN_PATH, "r") as access_token_file:
+                return access_token_file.readline().strip()
 
     # Else refresh the token
-    if not os.path.exists("temp/refresh_token"):
+    if not os.path.exists(REFRESH_TOKEN_PATH):
         raise FileNotFoundError("Refresh token not found")
 
     # Read the refresh token from a file
-    with open("temp/refresh_token", "r") as refresh_token_file:
+    with open(REFRESH_TOKEN_PATH, "r") as refresh_token_file:
         refresh_token = refresh_token_file.read()
 
     # Create a request to refresh the access token
@@ -130,21 +129,53 @@ def get_token():
         print(f"Failed to retrieve response: {e.reason}")
         return None
 
-    # Save the access token to a file
-    with open("temp/access_token", "w") as access_token_file:
-        access_token_file.write(js['access_token']) 
+    # Save the access token to a file if it exists
+    if 'access_token' in js:
+        with open(ACCESS_TOKEN_PATH, "w") as access_token_file:
+            access_token_file.write(js['access_token'])
+    else:
+        print("Access token not found in the response")
+        return None
 
-# Function to get information from Spotify (tracks, albums, or artists)
-def get_spotify_info(item_type, item_id, token):
+def get_spotify_info(item_type, item_id, token, retries=3):
+    """
+    Retrieve information from Spotify for a specific item type and ID.
+
+    Args:
+        item_type (str): The type of item to retrieve. Must be one of 'tracks', 'albums', or 'artists'.
+        item_id (str): The unique identifier for the item.
+        token (str): The access token for Spotify API authentication.
+
+    Returns:
+        dict: The information retrieved from Spotify for the specified item.
+
+    Raises:
+        ValueError: If the item_type is not one of 'tracks', 'albums', or 'artists'.
+    """
     valid_types = ['tracks', 'albums', 'artists']
     if item_type not in valid_types:
         raise ValueError(f"Invalid item_type. Expected one of {valid_types}")
 
     req = urllib.request.Request(f'https://api.spotify.com/v1/{item_type}/{item_id}', method="GET")
     req.add_header('Authorization', f'Bearer {token}')
-    with urllib.request.urlopen(req) as r:
-        content = r.read().decode()
-        return json.loads(content)
+    try:
+        with urllib.request.urlopen(req) as r:
+            content = r.read().decode()
+            return json.loads(content)
+    except urllib.error.HTTPError as e:
+        if e.code == 429 and retries > 0:
+            retry_after = int(e.headers.get('Retry-After', 1))
+            print(f"Rate limited. Retrying after {retry_after} seconds...")
+            time.sleep(retry_after)
+            return get_spotify_info(item_type, item_id, token, retries - 1)
+        print(f"HTTPError: {e.code} - {e.reason}")
+    except urllib.error.URLError as e:
+        print(f"URLError: {e.reason}")
+    except json.JSONDecodeError as e:
+        print(f"JSONDecodeError: {e.msg}")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+    return None
     
 def get_user_saved(token):
     limit = 50
@@ -180,15 +211,17 @@ def login():
     exchange_auth_code(auth_code)
 
 # Necessary scopes for the application: user-library-read
-login()
+if __name__ == "__main__":
+    # Check if the refresh token exists, and if not, login
+    if not os.path.exists(REFRESH_TOKEN_PATH):    login()
 
-# Get user saved tracks and write to a file
-with open("json/tracks.json", "w") as file:
-    file.write(json.dumps(get_user_saved(get_token()), indent=4))
+    # Get user saved tracks and write to a file
+    with open("json/tracks.json", "w") as file:
+        file.write(json.dumps(get_user_saved(get_token()), indent=4))
 
-with open("json/tracks.json", "r") as file:
-    tracks = json.load(file)
+    with open("json/tracks.json", "r") as file:
+        tracks = json.load(file)
 
-for track in tracks:
-    print(f"{track['track']['name']} by {track['track']['artists'][0]['name']}")
+    for track in tracks:
+        print(f"{track['track']['name']} by {track['track']['artists'][0]['name']}")
 
