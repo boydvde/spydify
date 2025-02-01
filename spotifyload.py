@@ -84,6 +84,7 @@ def exchange_auth_code(code: str):
     return js # Return the JSON response for debugging
 
 def get_token():
+    # TODO: Fix 401 error when token is expired. (age > 3600)
     """
     Retrieve the access token, either from a file if it exists and is valid, or by refreshing it using the refresh token.
 
@@ -95,9 +96,9 @@ def get_token():
     """
     # Check if the access token exists and is less than an hour old
     if os.path.exists(ACCESS_TOKEN_PATH):
-        time_diff = time.time() - os.path.getmtime(ACCESS_TOKEN_PATH)
-        print(f"Time difference: {time_diff}")
-        if time_diff < 3600:
+        token_age = time.time() - os.path.getmtime(ACCESS_TOKEN_PATH) # seconds
+        print(f"Token age: {token_age} seconds.")
+        if token_age < 3600:
             with open(ACCESS_TOKEN_PATH, "r") as access_token_file:
                 return access_token_file.readline().strip()
 
@@ -210,15 +211,13 @@ def login():
 
 # Necessary scopes for the application: user-library-read
 if __name__ == "__main__":
-    # Check if the refresh token exists, and if not, login
+    # Check if the refresh token exists (logged in), and if not, login
     if not os.path.exists(REFRESH_TOKEN_PATH):    login()
 
-    # Get user saved tracks and write to a file
-    with open("json/tracks.json", "w") as file:
-        file.write(json.dumps(get_user_saved(get_token()), indent=4))
-
-    with open("json/tracks.json", "r") as file:
-        tracks = json.load(file)
-
-    for track in tracks:
-        print(f"{track['track']['name']} by {track['track']['artists'][0]['name']}")
+    # Get user saved tracks, print them to the console, and write them to a file
+    with open('saved_tracks.txt', 'w', encoding='utf-8') as file: # Clear the file
+        file.write("User Saved Tracks\n")
+    with open('saved_tracks.txt', 'a', encoding='utf-8') as file: # Append to the file
+        for track in get_user_saved(get_token()):
+            print(f"{track['track']['name']} by {track['track']['artists'][0]['name']}")
+            file.write(f"{track['track']['name']} by {track['track']['artists'][0]['name']}\n")
