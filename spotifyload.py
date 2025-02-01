@@ -204,9 +204,10 @@ def get_user_saved(token):
 
 def login():
     user_auth(['user-library-read'])
-    input("Press Enter after authorizing the application...")
-    with open("temp/auth_token", "r") as file:
-        auth_code = file.read()
+    print("Please authorize the application in the web browser.")
+    print("Waiting for authorization...")
+    while not os.path.exists("temp/auth_token"): time.sleep(5)
+    with open("temp/auth_token", "r") as file: auth_code = file.read()
     exchange_auth_code(auth_code)
 
 # Necessary scopes for the application: user-library-read
