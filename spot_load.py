@@ -77,7 +77,7 @@ def get_batch_info(item_type, item_ids, retries=3):
             retry_after = int(e.headers.get('Retry-After', 1))
             print(f"Rate limited. Retrying after {retry_after} seconds...")
             time.sleep(retry_after)
-            return get_batch_info(item_type, item_id, retries - 1)
+            return get_batch_info(item_type, item_ids, retries - 1)
         print(f"HTTPError: {e.code} - {e.reason}")
     except json.JSONDecodeError as e:
         print(f"JSONDecodeError: {e.msg}")
@@ -126,66 +126,6 @@ def pretty_print(item_type, data):
 if __name__ == "__main__":
     # Check if logged in, else login
     if not os.path.exists(REFRESH_TOKEN_PATH) or get_token() is None: login()
-
-    # Main menu
-    try:
-        choice = input(
-'''
-What would you like to do?
-    1. Get user saved tracks
-    2. Get info (track/album/artist/playlist)
-    3. Get batch info (tracks/albums/artists)
-
-Enter you choice: ''')
-    except KeyboardInterrupt:
-        print("\nExiting...")
-        exit(0)
-
-    # Get user saved tracks
-    if choice == '1':
-        for track in get_user_saved(get_token()):
-            pretty_print('track', track['track'])
-    
-    # Get info (track/album/artist/playlist)
-    elif choice == '2':
-        item_type = input("Enter the item type (tracks, albums, artists or playlists): ")
-        item_id = input("Enter the Spotify ID: ")
-        info = get_info(item_type, item_id)
-        if info is not None: pretty_print(item_type, info)
-
-    # Get batch info (tracks/albums/artists)
-    elif choice == '3':
-        inp = '''6cP6IST6zj0sPIDOjmA1JZ
-5mbEDRNFzwWFGSW3f7guHB
-0aMonkh8OKgqx1K0viRHRT
-7iWWLbTuSYdncjX1tT22JJ
-0JCG4FU6reipiFnJ0sGloH
-1wCWu0olvm0XqvaY0CNna9
-50nexV89Lzk96Nw2WYCpXj
-41Pezz8jOFGYtax20GRwAJ
-0cAhbpsVMIeAoNsmLWQvZ9
-78caY2380YY6y4EYW5xx1m
-1N5nFD10jc1DhHh05ClXmD
-6vvdKKpfb645nvLkO2C1tH
-13JMGEaIAXzOndW8ETk7wC
-6PrPWf02VxGUd2jJLs9z1M
-3LDzO5Cz3hxdpfLSa6VsNr
-50aNLhnlmcuJQ2iF7Bpd6q
-1xZ9D4HLdm1PdjCwxik73W
-7n24EOW7ElKwtz5wXkzynQ
-6v2N2miIqFLuOLbyFNeAns
-55EPegD9KficI9lrBqqnwG
-6XKLjJ3MaAH32e5xILIFaL'''
-        ids = [line.strip() for line in inp.split('\n')]
-        info = get_batch_info('tracks', ids)
-        if info is not None:
-            for track in info['tracks']:
-                pretty_print('track', track)
-
-    # Exit
-    else:
-        print("Invalid choice. Exiting...")
-        exit(0)
 
 '''Spider logic 
 1. Get user saved tracks
