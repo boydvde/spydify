@@ -1,6 +1,8 @@
+import os, ssl, json, time
 import urllib.request, urllib.error, urllib.parse
-import os, time, ssl, json, webbrowser, base64
 from dotenv import load_dotenv
+
+from spot_access import get_token, login
 
 # Load the environment variables and define file paths
 load_dotenv()
@@ -14,147 +16,6 @@ REFRESH_TOKEN_PATH = "temp/refresh_token"
 ctx = ssl.create_default_context()
 ctx.check_hostname = False
 ctx.verify_mode = ssl.CERT_NONE
-
-def user_auth(scope: list=None):
-    """
-    Request user authorization in the web browser.
-
-    Args:
-        scope (list, optional): A list of scopes for the authorization. Defaults to an empty list.
-    """
-
-    if scope is None:
-        scope = []
-    endpoint = 'https://accounts.spotify.com/authorize?'
-    params = urllib.parse.urlencode({
-        'client_id': client_id,
-        'response_type': 'code',
-        'redirect_uri': redirect_uri, 
-        'scope': ' '.join(scope)
-    })
-    webbrowser.open(f'{endpoint}{params}')
-
-def fetch_auth_code():
-    url = "http://localhost:3000/auth_code"
-    while True:
-        print("Fetching auth code...")
-        try:
-            with urllib.request.urlopen(url) as response:
-                print("Response received.")
-                data = json.loads(response.read().decode())
-                if data["auth_code"]:
-                    return data["auth_code"]
-        except Exception as e:
-            print(f"Error fetching auth code: {e}")
-        time.sleep(1)
-
-def exchange_auth_code(code: str):
-    """
-    Exchange the authorization code for an access token.
-
-    Args:
-        code (str): The authorization code received from Spotify.
-
-    Returns:
-        dict: The JSON response containing the access token and refresh token.
-    """
-
-    # Create a request to exchange the authorization code for an access token
-    data = urllib.parse.urlencode({
-        'grant_type': 'authorization_code',
-        'code': code,
-        'redirect_uri': redirect_uri,
-    }).encode()
-    req = urllib.request.Request('https://accounts.spotify.com/api/token', data=data, method="POST")
-    req.add_header('Content-Type', 'application/x-www-form-urlencoded')
-    req.add_header('Authorization', 'Basic ' + base64.b64encode(f'{client_id}:{client_secret}'.encode()).decode())
-    
-    # Retrieve the response from the server
-    try:
-        with urllib.request.urlopen(req) as r:
-            content = r.read().decode()
-            js = json.loads(content)
-    except urllib.error.HTTPError as e:
-        print(f"Failed to retrieve response from {req.full_url}: {e.code} {e.reason}")
-        return {}
-    
-    os.makedirs("temp", exist_ok=True)
-    # Save the access token to a file if it exists
-    if 'access_token' in js:
-        with open(ACCESS_TOKEN_PATH, "w") as access_token_file:
-            access_token_file.write(js['access_token'])
-    else:
-        print("Access token not found in the response")
-
-    # Save the refresh token to a file if it exists
-    if 'refresh_token' in js:
-        with open(REFRESH_TOKEN_PATH, "w") as refresh_token_file:
-            refresh_token_file.write(js['refresh_token'])
-    else:
-        print("Refresh token not found in the response")
-
-    return js # Return the JSON response for debugging
-
-def get_token():
-    # TODO: Fix 401 error when token is expired. (age > 3600)
-    """
-    Retrieve the access token, either from a file if it exists and is valid, or by refreshing it using the refresh token.
-
-    Returns:
-        str: The access token if retrieval is successful.
-        None: If the token retrieval fails.
-    Raises:
-        FileNotFoundError: If the refresh token file does not exist.
-    """
-    # Check if the access token exists and is less than an hour old
-    if os.path.exists(ACCESS_TOKEN_PATH):
-        token_age = time.time() - os.path.getmtime(ACCESS_TOKEN_PATH) # seconds
-        print(f"Token age: {token_age} seconds.")
-        if token_age < 3600:
-            with open(ACCESS_TOKEN_PATH, "r") as access_token_file:
-                return access_token_file.readline().strip()
-
-    # Else refresh the token
-    if not os.path.exists(REFRESH_TOKEN_PATH):
-        raise FileNotFoundError("Refresh token not found")
-
-    # Read the refresh token from a file
-    with open(REFRESH_TOKEN_PATH, "r") as refresh_token_file:
-        refresh_token = refresh_token_file.read()
-
-    # Create a request to refresh the access token
-    data = urllib.parse.urlencode({
-        'grant_type': 'refresh_token',
-        'refresh_token': refresh_token
-    }).encode()
-    req = urllib.request.Request('https://accounts.spotify.com/api/token', data=data, method="POST")
-    req.add_header('Content-Type', 'application/x-www-form-urlencoded')
-    req.add_header('Authorization', 'Basic ' + base64.b64encode(f'{client_id}:{client_secret}'.encode()).decode())
-
-    try:
-        # Retrieve the response
-        with urllib.request.urlopen(req) as r:
-            content = r.read().decode()
-            js = json.loads(content)
-    except urllib.error.HTTPError as e:
-        print(f"HTTPError: {e.code} {e.reason}")
-        return None
-
-    # Save the access token to a file if it exists
-    if 'access_token' in js:
-        with open(ACCESS_TOKEN_PATH, "w") as access_token_file:
-            access_token_file.write(js['access_token'])
-    else:
-        print("Access token not found in the response")
-        return None
-
-def login():
-    user_auth(['user-library-read'])
-    print("Please authorize the application in the web browser.")
-    print("Waiting for authorization...")
-    auth_code = fetch_auth_code()
-    exchange_auth_code(auth_code)
-    print("Authorization successful.")
 
 def get_info(item_type, item_id, retries=3):
     """
@@ -249,6 +110,7 @@ def get_user_saved(token):
             break
     return items
 
+
 # Necessary scopes for the application: user-library-read
 if __name__ == "__main__":
     # Check if logged in, else login
@@ -310,12 +172,10 @@ Enter you choice: ''')
         exit(0)
 
 
-'''
-Spider logic 
+'''Spider logic 
 1. Get user saved tracks
 2. Get all item types + spotify ID
 3. Add to queue
 4. Get info for each item in the queue
 5. Add to queue if not visited
-6. Repeat until queue is empty
-'''
+6. Repeat until queue is empty'''
