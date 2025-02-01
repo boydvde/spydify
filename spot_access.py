@@ -50,7 +50,7 @@ def fetch_auth_code():
 
 def exchange_auth_code(code: str):
     """
-    Exchange the authorization code for an access token.
+    Exchange the authorization code for an access token and save the tokens to files.
 
     Args:
         code (str): The authorization code received from Spotify.
@@ -96,7 +96,6 @@ def exchange_auth_code(code: str):
     return js # Return the JSON response for debugging
 
 def get_token():
-    # TODO: Fix 401 error when token is expired. (age > 3600)
     """
     Retrieve the access token, either from a file if it exists and is valid, or by refreshing it using the refresh token.
 
@@ -144,11 +143,15 @@ def get_token():
     if 'access_token' in js:
         with open(ACCESS_TOKEN_PATH, "w") as access_token_file:
             access_token_file.write(js['access_token'])
+            return js['access_token']
     else:
         print("Access token not found in the response")
         return None
 
 def login():
+    """
+    Requests user authorization and exchanges the authorization code for access and refresh tokens.
+    """
     user_auth(['user-library-read'])
     print("Please authorize the application in the web browser.")
     print("Waiting for authorization...")
