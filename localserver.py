@@ -5,21 +5,21 @@ import os
 hostName = "localhost"
 serverPort = 3000
 
-class MyServer(BaseHTTPRequestHandler):
+class SpotifyAuthServer(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith("/callback"):
             # Parse the query string
             query = urllib.parse.urlparse(self.path).query
-            code = urllib.parse.parse_qs(query).get("code", None)
-
-            if code and code[0]:
+            code_list = urllib.parse.parse_qs(query).get("code", None) # Returns a list containting one element 
+            if code_list: 
+                code = code_list[0]
                 # Log the authorization code to the console for debugging purposes
-                print(f"Authorization code: {code[0]}")
+                print(f"Authorization code: {code}")
 
                 # Pass token to the main program
                 os.makedirs("temp", exist_ok=True)
                 with open("temp/auth_token", "w") as token_file:
-                    token_file.write(code[0])
+                    token_file.write(code)
         
         # Send response 
         self.send_response(200)
@@ -28,7 +28,7 @@ class MyServer(BaseHTTPRequestHandler):
         <html>
             <head><title>User Authorization</title></head>
             <body>
-                <p>Request: {self.path}</p>
+                <h1>Authorization Successful</h1>
                 <p>You can close this window now.</p>
             </body>
         </html>
@@ -38,7 +38,7 @@ class MyServer(BaseHTTPRequestHandler):
         # /callback?code=AQ...TXWAg
 
 if __name__ == "__main__":        
-    webServer = HTTPServer((hostName, serverPort), MyServer)
+    webServer = HTTPServer((hostName, serverPort), SpotifyAuthServer)
     print(f"Server started http://{hostName}:{serverPort}")
 
     try:
