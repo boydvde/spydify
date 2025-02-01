@@ -2,13 +2,11 @@ import urllib.request, urllib.error, urllib.parse
 import os, time, ssl, json, webbrowser, base64
 from dotenv import load_dotenv
 
-# Load the environment variables 
+# Load the environment variables and define file paths
 load_dotenv()
 client_id = os.getenv('CLIENT_ID')
 client_secret = os.getenv('CLIENT_SECRET')
 redirect_uri = os.getenv('REDIRECT_URI')
-
-# Define file paths as constants
 ACCESS_TOKEN_PATH = "temp/access_token"
 REFRESH_TOKEN_PATH = "temp/refresh_token"
 
@@ -35,6 +33,20 @@ def user_auth(scope: list=None):
         'scope': ' '.join(scope)
     })
     webbrowser.open(f'{endpoint}{params}')
+
+def fetch_auth_code():
+    url = "http://localhost:3000/auth_code"
+    while True:
+        print("Fetching auth code...")
+        try:
+            with urllib.request.urlopen(url) as response:
+                print("Response received.")
+                data = json.loads(response.read().decode())
+                if data["auth_code"]:
+                    return data["auth_code"]
+        except Exception as e:
+            print(f"Error fetching auth code: {e}")
+        time.sleep(1)
 
 def exchange_auth_code(code: str):
     """
@@ -137,14 +149,10 @@ def get_token():
         return None
 
 def login():
-    os.remove("temp/auth_token") if os.path.exists("temp/auth_token") else None 
     user_auth(['user-library-read'])
     print("Please authorize the application in the web browser.")
     print("Waiting for authorization...")
-    while not os.path.exists("temp/auth_token"): 
-        try: time.sleep(5)
-        except KeyboardInterrupt: print("Authorization failed. Exiting..."); exit(1)
-    with open("temp/auth_token", "r") as file: auth_code = file.read()
+    auth_code = fetch_auth_code()
     exchange_auth_code(auth_code)
     print("Authorization successful.")
 
@@ -210,7 +218,7 @@ def get_batch_info(item_type, item_ids, retries=3):
             retry_after = int(e.headers.get('Retry-After', 1))
             print(f"Rate limited. Retrying after {retry_after} seconds...")
             time.sleep(retry_after)
-            return get_info(item_type, item_id, retries - 1)
+            return get_batch_info(item_type, item_id, retries - 1)
         print(f"HTTPError: {e.code} - {e.reason}")
     except json.JSONDecodeError as e:
         print(f"JSONDecodeError: {e.msg}")
@@ -252,7 +260,8 @@ if __name__ == "__main__":
 '''
 What would you like to do?
     1. Get user saved tracks
-    2. Get track/album/artist/playlist info
+    2. Get info (track/album/artist/playlist)
+    3. Get batch info (tracks/albums/artists)
 
 Enter you choice: ''')
     except KeyboardInterrupt:
@@ -269,13 +278,13 @@ Enter you choice: ''')
                 print(f"{track['track']['name']} by {track['track']['artists'][0]['name']}")
                 file.write(f"{track['track']['name']} by {track['track']['artists'][0]['name']}\n")
     
-    # Get track/album/artist/playlist info
+    # Get info (track/album/artist/playlist)
     elif choice == '2':
         c = 1
         # Get track/album/artist info
         item_type = input("Enter the item type (tracks, albums, artists or playlists): ")
         item_id = input("Enter the Spotify ID: ")
-        info = get_info(item_type, item_id, get_token())
+        info = get_info(item_type, item_id)
         if info is not None:
             if item_type == 'tracks':
                 print(f"Track: {info['name']} by {info['artists'][0]['name']}") # Print track info
@@ -292,7 +301,21 @@ Enter you choice: ''')
                     print(f"{c}: {track['track']['name']} by {track['track']['artists'][0]['name']}") # Print name and artist of each track in the playlist
                     c += 1
     
+    elif choice == '3':
+        print('WIP')
+    
     # Exit
     else:
         print("Invalid choice. Exiting...")
         exit(0)
+
+
+'''
+Spider logic 
+1. Get user saved tracks
+2. Get all item types + spotify ID
+3. Add to queue
+4. Get info for each item in the queue
+5. Add to queue if not visited
+6. Repeat until queue is empty
+'''
