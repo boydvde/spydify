@@ -62,8 +62,8 @@ def exchange_auth_code(code: str):
         with urllib.request.urlopen(req) as r:
             content = r.read().decode()
             js = json.loads(content)
-    except urllib.error.URLError as e:
-        print(f"Failed to retrieve response from {req.full_url}: {e.reason}")
+    except urllib.error.HTTPError as e:
+        print(f"Failed to retrieve response from {req.full_url}: {e.code} {e.reason}")
         return {}
     
     os.makedirs("temp", exist_ok=True)
@@ -124,8 +124,8 @@ def get_token():
         with urllib.request.urlopen(req) as r:
             content = r.read().decode()
             js = json.loads(content)
-    except urllib.error.URLError as e:
-        print(f"Failed to retrieve response: {e.reason}")
+    except urllib.error.HTTPError as e:
+        print(f"HTTPError: {e.code} {e.reason}")
         return None
 
     # Save the access token to a file if it exists
@@ -136,7 +136,19 @@ def get_token():
         print("Access token not found in the response")
         return None
 
-def get_spotify_info(item_type, item_id, token, retries=3):
+def login():
+    os.remove("temp/auth_token") if os.path.exists("temp/auth_token") else None 
+    user_auth(['user-library-read'])
+    print("Please authorize the application in the web browser.")
+    print("Waiting for authorization...")
+    while not os.path.exists("temp/auth_token"): 
+        try: time.sleep(5)
+        except KeyboardInterrupt: print("Authorization failed. Exiting..."); exit(1)
+    with open("temp/auth_token", "r") as file: auth_code = file.read()
+    exchange_auth_code(auth_code)
+    print("Authorization successful.")
+
+def get_info(item_type, item_id, retries=3):
     """
     Retrieve information from Spotify for a specific item type and ID.
 
@@ -156,20 +168,50 @@ def get_spotify_info(item_type, item_id, token, retries=3):
         raise ValueError(f"Invalid item_type. Expected one of {valid_types}")
 
     req = urllib.request.Request(f'https://api.spotify.com/v1/{item_type}/{item_id}', method="GET")
-    req.add_header('Authorization', f'Bearer {token}')
+    req.add_header('Authorization', f'Bearer {get_token()}')
     try:
         with urllib.request.urlopen(req) as r:
             content = r.read().decode()
             return json.loads(content)
+    # Recursively retry the request if rate limited (max retries = 3), else print the error
     except urllib.error.HTTPError as e:
         if e.code == 429 and retries > 0:
             retry_after = int(e.headers.get('Retry-After', 1))
             print(f"Rate limited. Retrying after {retry_after} seconds...")
             time.sleep(retry_after)
-            return get_spotify_info(item_type, item_id, token, retries - 1)
+            return get_info(item_type, item_id, retries - 1)
         print(f"HTTPError: {e.code} - {e.reason}")
-    except urllib.error.URLError as e:
-        print(f"URLError: {e.reason}")
+    except json.JSONDecodeError as e:
+        print(f"JSONDecodeError: {e.msg}")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+    return None
+
+def get_batch_info(item_type, item_ids, retries=3):
+    valid_types = ['tracks', 'albums', 'artists']
+    if item_type not in valid_types:
+        raise ValueError(f"Invalid item_type. Expected one of {valid_types}")
+    
+    if len(item_ids) == 0:
+        return None
+    elif len(item_ids) > 50:
+        raise ValueError("Maximum number of items is 50")
+    
+    data = urllib.parse.urlencode({'ids': ','.join(item_ids)}).encode()
+    req = urllib.request.Request(f'https://api.spotify.com/v1/{item_type}', data=data, method="GET")
+    req.add_header('Authorization', f'Bearer {get_token()}')
+    try:
+        with urllib.request.urlopen(req) as r:
+            content = r.read().decode()
+            return json.loads(content)
+    # Recursively retry the request if rate limited (max retries = 3), else print the error
+    except urllib.error.HTTPError as e:
+        if e.code == 429 and retries > 0:
+            retry_after = int(e.headers.get('Retry-After', 1))
+            print(f"Rate limited. Retrying after {retry_after} seconds...")
+            time.sleep(retry_after)
+            return get_info(item_type, item_id, retries - 1)
+        print(f"HTTPError: {e.code} - {e.reason}")
     except json.JSONDecodeError as e:
         print(f"JSONDecodeError: {e.msg}")
     except Exception as e:
@@ -192,31 +234,19 @@ def get_user_saved(token):
                 items.extend(js['items'])
                 offset += limit
         except urllib.error.HTTPError as e:
-            print(f"HTTPError: {e.code} - {e.reason}")
-            break
-        except urllib.error.URLError as e:
-            print(f"URLError: {e.reason}")
+            print(f"HTTPError: {e.code} {e.reason}")
             break
         except Exception as e:
             print(f"Unexpected error: {e}")
             break
     return items
 
-def login():
-    user_auth(['user-library-read'])
-    print("Please authorize the application in the web browser.")
-    print("Waiting for authorization...")
-    while not os.path.exists("temp/auth_token"): 
-        try: time.sleep(5)
-        except KeyboardInterrupt: print("Authorization failed. Exiting..."); exit(1)
-    with open("temp/auth_token", "r") as file: auth_code = file.read()
-    exchange_auth_code(auth_code)
-
 # Necessary scopes for the application: user-library-read
 if __name__ == "__main__":
-    # Check if the refresh token exists (logged in), and if not, login
-    if not os.path.exists(REFRESH_TOKEN_PATH):    login()
+    # Check if logged in, else login
+    if not os.path.exists(REFRESH_TOKEN_PATH) or get_token() is None: login()
 
+    # Main menu
     try:
         choice = input(
 '''
@@ -245,14 +275,15 @@ Enter you choice: ''')
         # Get track/album/artist info
         item_type = input("Enter the item type (tracks, albums, artists or playlists): ")
         item_id = input("Enter the Spotify ID: ")
-        info = get_spotify_info(item_type, item_id, get_token())
+        info = get_info(item_type, item_id, get_token())
         if info is not None:
             if item_type == 'tracks':
                 print(f"Track: {info['name']} by {info['artists'][0]['name']}") # Print track info
             elif item_type == 'albums':
                 print(f"Album: {info['name']} by {info['artists'][0]['name']}") # Print album info
                 for track in info['tracks']['items']:
-                    print(f"Track: {track['name']}") # Print name of each track in the album 
+                    print(f"{c}: {track['name']}") # Print name of each track in the album 
+                    c += 1
             elif item_type == 'artists':
                 print(f"Artist: {info['name']}") # Print artist info
             elif item_type == 'playlists':
@@ -260,8 +291,6 @@ Enter you choice: ''')
                 for track in info['tracks']['items']:
                     print(f"{c}: {track['track']['name']} by {track['track']['artists'][0]['name']}") # Print name and artist of each track in the playlist
                     c += 1
-
-        # print(json.dumps(info, indent=1))
     
     # Exit
     else:
