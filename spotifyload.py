@@ -149,9 +149,9 @@ def get_spotify_info(item_type, item_id, token, retries=3):
         dict: The information retrieved from Spotify for the specified item.
 
     Raises:
-        ValueError: If the item_type is not one of 'tracks', 'albums', or 'artists'.
+        ValueError: If the item_type is not one of 'tracks', 'albums', 'artists' or 'playlists'.
     """
-    valid_types = ['tracks', 'albums', 'artists']
+    valid_types = ['tracks', 'albums', 'artists', 'playlists']
     if item_type not in valid_types:
         raise ValueError(f"Invalid item_type. Expected one of {valid_types}")
 
@@ -206,7 +206,9 @@ def login():
     user_auth(['user-library-read'])
     print("Please authorize the application in the web browser.")
     print("Waiting for authorization...")
-    while not os.path.exists("temp/auth_token"): time.sleep(5)
+    while not os.path.exists("temp/auth_token"): 
+        try: time.sleep(5)
+        except KeyboardInterrupt: print("Authorization failed. Exiting..."); exit(1)
     with open("temp/auth_token", "r") as file: auth_code = file.read()
     exchange_auth_code(auth_code)
 
@@ -215,10 +217,53 @@ if __name__ == "__main__":
     # Check if the refresh token exists (logged in), and if not, login
     if not os.path.exists(REFRESH_TOKEN_PATH):    login()
 
-    # Get user saved tracks, print them to the console, and write them to a file
-    with open('saved_tracks.txt', 'w', encoding='utf-8') as file: # Clear the file
-        file.write("User Saved Tracks\n")
-    with open('saved_tracks.txt', 'a', encoding='utf-8') as file: # Append to the file
-        for track in get_user_saved(get_token()):
-            print(f"{track['track']['name']} by {track['track']['artists'][0]['name']}")
-            file.write(f"{track['track']['name']} by {track['track']['artists'][0]['name']}\n")
+    try:
+        choice = input(
+'''
+What would you like to do?
+    1. Get user saved tracks
+    2. Get track/album/artist/playlist info
+
+Enter you choice: ''')
+    except KeyboardInterrupt:
+        print("\nExiting...")
+        exit(0)
+
+    # Get user saved tracks
+    if choice == '1':
+        # Get user saved tracks, print them to the console, and write them to a file
+        with open('temp/saved_tracks.txt', 'w', encoding='utf-8') as file: # Clear the file
+            file.write("User Saved Tracks\n")
+        with open('temp/saved_tracks.txt', 'a', encoding='utf-8') as file: # Append to the file
+            for track in get_user_saved(get_token()):
+                print(f"{track['track']['name']} by {track['track']['artists'][0]['name']}")
+                file.write(f"{track['track']['name']} by {track['track']['artists'][0]['name']}\n")
+    
+    # Get track/album/artist/playlist info
+    elif choice == '2':
+        c = 1
+        # Get track/album/artist info
+        item_type = input("Enter the item type (tracks, albums, artists or playlists): ")
+        item_id = input("Enter the Spotify ID: ")
+        info = get_spotify_info(item_type, item_id, get_token())
+        if info is not None:
+            if item_type == 'tracks':
+                print(f"Track: {info['name']} by {info['artists'][0]['name']}") # Print track info
+            elif item_type == 'albums':
+                print(f"Album: {info['name']} by {info['artists'][0]['name']}") # Print album info
+                for track in info['tracks']['items']:
+                    print(f"Track: {track['name']}") # Print name of each track in the album 
+            elif item_type == 'artists':
+                print(f"Artist: {info['name']}") # Print artist info
+            elif item_type == 'playlists':
+                print(f"\nPlaylist: {info['name']} by {info['owner']['display_name']}") # Print playlist info
+                for track in info['tracks']['items']:
+                    print(f"{c}: {track['track']['name']} by {track['track']['artists'][0]['name']}") # Print name and artist of each track in the playlist
+                    c += 1
+
+        # print(json.dumps(info, indent=1))
+    
+    # Exit
+    else:
+        print("Invalid choice. Exiting...")
+        exit(0)
