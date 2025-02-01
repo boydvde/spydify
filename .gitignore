@@ -2,5 +2,5 @@
 .vscode/
 .env
 __pycache__/
-tests/
 temp/
+db/
