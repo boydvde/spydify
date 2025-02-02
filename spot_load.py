@@ -132,23 +132,6 @@ def pretty_print(item_type, data):
         print(f"\nPlaylist: {data['name']} by {data['owner']['display_name']}")
         for track in data['tracks']['items']: print(f'{i}.', track['track']['name'], "by", track['track']['artists'][0]['name']); i += 1
 
-def base62_decode(base62_str):
-    base62_chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-    base = len(base62_chars)
-    decoded_value = 0
-    for char in base62_str:
-        decoded_value = decoded_value * base + base62_chars.index(char)
-    return decoded_value
-
-def base62_encode(value):
-    base62_chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-    base = len(base62_chars)
-    encoded_str = ""
-    while value > 0:
-        encoded_str = base62_chars[value % base] + encoded_str
-        value //= base
-    return encoded_str
-
 def __generate_debug_json():
     '''
     Generate JSON files for debugging purposes
