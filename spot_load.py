@@ -24,7 +24,6 @@ def get_info(item_type, item_id, retries=3):
     Args:
         item_type (str): The type of item to retrieve. Must be one of 'tracks', 'albums', or 'artists'.
         item_id (str): The unique identifier for the item.
-        token (str): The access token for Spotify API authentication.
 
     Returns:
         dict: The information retrieved from Spotify for the specified item.
@@ -32,7 +31,7 @@ def get_info(item_type, item_id, retries=3):
     Raises:
         ValueError: If the item_type is not one of 'track', 'album', 'artist' or 'playlist'.
     """
-    valid_types = ['track', 'album', 'artist', 'playslist']
+    valid_types = ['track', 'album', 'artist', 'playlist']
     if item_type not in valid_types:
         raise ValueError(f"Invalid item_type. Expected one of {valid_types}")
 
@@ -57,7 +56,7 @@ def get_info(item_type, item_id, retries=3):
     return None
 
 def get_batch_info(item_type, item_ids, retries=3):
-    valid_types = ['tracks', 'albums', 'artists']
+    valid_types = ['track', 'album', 'artist']
     if item_type not in valid_types:
         raise ValueError(f"Invalid item_type. Expected one of {valid_types}")
     
@@ -65,7 +64,7 @@ def get_batch_info(item_type, item_ids, retries=3):
     elif len(item_ids) > 50: raise ValueError("Maximum number of items is 50")
     
     ids = ','.join(item_ids)
-    req = urllib.request.Request(f'https://api.spotify.com/v1/{item_type}?ids={ids}', method="GET")
+    req = urllib.request.Request(f'https://api.spotify.com/v1/{item_type}s?ids={ids}', method="GET")
     req.add_header('Authorization', f'Bearer {get_token()}')
     try:
         with urllib.request.urlopen(req) as r:
@@ -124,18 +123,14 @@ def get_related_artists(artist_id):
 
 def pretty_print(item_type, data):
     i = 1
-    if item_type == 'track':
-        print(f"{data['name']} by {data['artists'][0]['name']}")
+    if item_type == 'track': print(f"{data['name']} by {data['artists'][0]['name']}")
     elif item_type == 'album':
         print(f"\nAlbum: {data['name']} by {data['artists'][0]['name']}")
-        for track in data['tracks']['items']:
-            print(f'{i}.', track['name'])
-    elif item_type == 'artist':
-        print(f"\nArtist: {data['name']}")
+        for track in data['tracks']['items']: print(f'{i}.', track['name']); i += 1
+    elif item_type == 'artist': print(f"\nArtist: {data['name']}")
     elif item_type == 'playlist':
         print(f"\nPlaylist: {data['name']} by {data['owner']['display_name']}")
-        for track in data['tracks']['items']:
-            print(f'{i}.', track['track']['name'], "by", track['track']['artists'][0]['name'])
+        for track in data['tracks']['items']: print(f'{i}.', track['track']['name'], "by", track['track']['artists'][0]['name']); i += 1
 
 def base62_decode(base62_str):
     base62_chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
@@ -179,7 +174,9 @@ if __name__ == "__main__":
     conn = sqlite3.connect("db/spotify.sqlite")
     cursor = conn.cursor()
 
-    # Track table: id, name, [artist_id], album_id, duration, popularity, explicit, track_number
+    # Track table: id, name, album_id, duration, popularity, explicit, track_number 
+    #   connected to Artist by TrackArtist connector table
+    #   connected to Album by album_id
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS Track (
             id TEXT PRIMARY KEY,
@@ -192,12 +189,13 @@ if __name__ == "__main__":
         )
     ''')
 
-    # Album table: id, name, [artist_id], release_date, total_tracks, label, album_type, popularity
+    # Album table: id, name, release_date, total_tracks, label, album_type, popularity 
+    #   connected to Artist by AlbumArtist connector table
+    #   connected to Track by album_id
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS Album (
             id TEXT PRIMARY KEY,
             name TEXT,
-            artist_id TEXT,
             release_date TEXT,
             total_tracks INTEGER,
             label TEXT,
@@ -206,14 +204,25 @@ if __name__ == "__main__":
         )
     ''')
     
-    # Artist table: id, name, genres, popularity, followers
+    # Artist table: id, name, popularity, followers
+    #   connected to Track by TrackArtist connector table
+    #   connected to Album by AlbumArtist connector table
+    #   connected to Genre by ArtistGenre connector table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS Artist (
             id TEXT PRIMARY KEY,
             name TEXT,
-            genres TEXT,
             popularity INTEGER,
             followers INTEGER
+        )
+    ''')
+
+    # Genre table: id, name
+    #   connected to Artist by ArtistGenre connector table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS Genre (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT
         )
     ''')
 
@@ -239,12 +248,25 @@ if __name__ == "__main__":
         )
     ''')
 
+    # Create a connector table for the many-to-many relationship between artists and genres
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS ArtistGenre (
+            artist_id TEXT,
+            genre_id INTEGER,
+            PRIMARY KEY (artist_id, genre_id),
+            FOREIGN KEY (artist_id) REFERENCES Artist(id),
+            FOREIGN KEY (genre_id) REFERENCES Genre(id)
+        )
+    ''')
+
     conn.commit()
 
-    # TODO: Spider logic 
-    # 1. Get user saved tracks info
-    # 2. Add track info to database
-    # 3. Add artist and album id's to queue
+    # TODO: Spider logic:
+    # Initial setup:
+        # 1. Get user saved tracks info
+        # 2. Add track info to database
+        # 3. Add artist and album id's to queue
+    # Loop:
     # 4. Get track id's from albums (batch request) and add to queue
     # 5. Get track id's from artists (batch request) and add to queue
     # 6. Get related artists and add to queue
@@ -262,10 +284,19 @@ if __name__ == "__main__":
         track_number = int(track['track']['track_number'])
 
         print(track_id, track_name, album_id, duration, popularity, explicit, track_number)
-        # Insert track info into the database
+
+        # Insert into the Track table
         cursor.execute('''
             INSERT OR IGNORE INTO Track (id, name, album_id, duration, popularity, explicit, track_number)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', (track_id, track_name, album_id, duration, popularity, explicit, track_number))
-    
+
+        # Insert into the TrackArtist table
+        for artist_id in artist_ids:
+            cursor.execute('''
+                INSERT OR IGNORE INTO TrackArtist (track_id, artist_id)
+                VALUES (?, ?)
+            ''', (track_id, artist_id))
+        
+
     conn.commit()
