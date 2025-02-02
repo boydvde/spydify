@@ -151,8 +151,7 @@ def create_tables(cursor):
             id TEXT PRIMARY KEY,
             name TEXT,
             popularity INTEGER,
-            followers INTEGER, 
-            get_related INTEGER
+            followers INTEGER
         )
     ''')
 
@@ -233,8 +232,8 @@ def dump_user_saved(cursor, saved_tracks):
                 VALUES (?, ?)
             ''', (track_id, artist_id))
             cursor.execute('''
-                INSERT OR IGNORE INTO Artist (id, get_related)
-                VALUES (?, 0)
+                INSERT OR IGNORE INTO Artist (id)
+                VALUES (?)
             ''', (artist_id,))
         
         # Insert into the Album table
@@ -270,8 +269,8 @@ def dump_tracks(cursor, tracks):
                 VALUES (?, ?)
             ''', (track_id, artist_id))
             cursor.execute('''
-                INSERT OR IGNORE INTO Artist (id, get_related)
-                VALUES (?, 0)
+                INSERT OR IGNORE INTO Artist (id)
+                VALUES (?)
             ''', (artist_id,))
         
         # Insert into the Album table
@@ -321,8 +320,8 @@ def dump_albums(cursor, albums):
                 VALUES (?, ?)
             ''', (album_id, artist_id))
             cursor.execute('''
-                INSERT OR IGNORE INTO Artist (id, get_related)
-                VALUES (?, 0)
+                INSERT OR IGNORE INTO Artist (id)
+                VALUES (?)
             ''', (artist_id,))
         
         # Insert into the Track table
@@ -345,8 +344,8 @@ def dump_artists(cursor, artists):
 
         # Insert into the Artist table
         cursor.execute('''
-            INSERT OR REPLACE INTO Artist (id, name, popularity, followers, get_related)
-            VALUES (?, ?, ?, ?, 0)
+            INSERT OR REPLACE INTO Artist (id, name, popularity, followers)
+            VALUES (?, ?, ?, ?)
         ''', (artist_id, artist_name, popularity, followers))
 
         # Insert into the ArtistGenre table and Genre table
