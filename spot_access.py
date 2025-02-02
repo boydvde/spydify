@@ -35,6 +35,12 @@ def user_auth(scope: list=None):
     webbrowser.open(f'{endpoint}{params}')
 
 def fetch_auth_code():
+    """
+    Continuously fetches the authorization code from the local server.
+
+    Returns:
+        str: The authorization code received from the local server.
+    """
     url = "http://localhost:3000/auth_code"
     while True:
         print("Fetching auth code...")
