@@ -426,39 +426,52 @@ if __name__ == "__main__":
         conn.commit()
 
     # Loop until all queues are empty
+    # Priority: Tracks -> Albums -> Artists
     while True:
-        # Scan database for albums with no info
-        cursor.execute('SELECT id FROM Album WHERE name IS NULL LIMIT 20')
-        album_ids = [row[0] for row in cursor.fetchall()]
+        # Tracks
+        while True:
+            # Scan database for tracks with no info
+            cursor.execute('SELECT id FROM Track WHERE name IS NULL LIMIT 50')
+            track_ids = [row[0] for row in cursor.fetchall()]
 
-        # Batch request album info and add to database
-        if len(album_ids) > 0:
-            album_batch = get_batch_info('album', album_ids)
-            if album_batch is not None: dump_albums(cursor, album_batch['albums'])
-        else: print("No albums to update")
-        conn.commit()
+            # Batch request track info and add to database
+            if len(track_ids) > 0:
+                track_batch = get_batch_info('track', track_ids)
+                if track_batch is not None: dump_tracks(cursor, track_batch['tracks'])
+            else: 
+                conn.commit()
+                print("No tracks to update, moving to albums")
+                break
 
-        # Scan database for artists with no info
-        cursor.execute('SELECT id FROM Artist WHERE name IS NULL LIMIT 50')
-        artist_ids = [row[0] for row in cursor.fetchall()]
+        # Albums
+        while True:
+            # Scan database for albums with no info
+            cursor.execute('SELECT id FROM Album WHERE name IS NULL LIMIT 20')
+            album_ids = [row[0] for row in cursor.fetchall()]
 
-        # Batch request artist info and add to database
-        if len(artist_ids) > 0:
-            artist_batch = get_batch_info('artist', artist_ids)
-            if artist_batch is not None: dump_artists(cursor, artist_batch['artists'])
-        else: print("No artists to update")
-        conn.commit()
+            # Batch request album info and add to database
+            if len(album_ids) > 0:
+                album_batch = get_batch_info('album', album_ids)
+                if album_batch is not None: dump_albums(cursor, album_batch['albums'])
+            else:
+                conn.commit() 
+                print("No albums to update, moving to artists")
+                break
 
-        # Scan database for tracks with no info
-        cursor.execute('SELECT id FROM Track WHERE name IS NULL LIMIT 50')
-        track_ids = [row[0] for row in cursor.fetchall()]
+        # Artists
+        while True:
+            # Scan database for artists with no info
+            cursor.execute('SELECT id FROM Artist WHERE name IS NULL LIMIT 50')
+            artist_ids = [row[0] for row in cursor.fetchall()]
 
-        # Batch request track info and add to database
-        if len(track_ids) > 0:
-            track_batch = get_batch_info('track', track_ids)
-            if track_batch is not None: dump_tracks(cursor, track_batch['tracks'])
-        else: print("No tracks to update")
-        conn.commit()
+            # Batch request artist info and add to database
+            if len(artist_ids) > 0:
+                artist_batch = get_batch_info('artist', artist_ids)
+                if artist_batch is not None: dump_artists(cursor, artist_batch['artists'])
+            else: 
+                conn.commit()
+                print("No artists to update, starting over")
+                break
 
         # Break if all queues are empty
         if len(album_ids) == 0 and len(artist_ids) == 0 and len(track_ids) == 0:
