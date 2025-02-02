@@ -357,22 +357,6 @@ def dump_artists(cursor, artists):
                 VALUES (?, ?)
             ''', (artist_id, cursor.lastrowid))
 
-def __generate_debug_json():
-    '''
-    Generate JSON files for debugging purposes
-    '''
-    # Save track info for debugging
-    track = get_info('track', '3AwmE4xsRfgjtIPLMyvL9i')
-    json.dump(track, open("debug/track.json", "w"), indent=2) 
-
-    # Save album info for debugging
-    album = get_info('album', '29sKvBpV3odDmSp5Cc3P1V')
-    json.dump(album, open("debug/album.json", "w"), indent=2)
-
-    # Save artist info for debugging
-    artist = get_info('artist', '7sJ3ngSMvvXGdVLnODPqXa')
-    json.dump(artist, open("debug/artist.json", "w"), indent=2)
-
 if __name__ == "__main__":
     # Check if logged in, else login
     if not os.path.exists(REFRESH_TOKEN_PATH) or get_token() is None: login()
@@ -397,10 +381,6 @@ if __name__ == "__main__":
     os.makedirs("db", exist_ok=True)
     conn = sqlite3.connect("db/spotify.sqlite")
     cursor = conn.cursor()
-
-    if DEBUG:
-        __generate_debug_json()
-        delete_tables(cursor)
     
     # Create the tables if they don't exist
     create_tables(cursor)
