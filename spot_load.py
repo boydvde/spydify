@@ -111,21 +111,6 @@ def get_user_saved():
             break
     return items
 
-# TODO fix ???
-def get_related_artists(artist_id):
-    req = urllib.request.Request(f'https://api.spotify.com/v1/artists/{artist_id}/related-artists', method="GET")
-    req.add_header('Authorization', f'Bearer {get_token()}')
-    try:
-        with urllib.request.urlopen(req) as r:
-            content = r.read().decode()
-            js = json.loads(content)
-            return js
-    except urllib.error.HTTPError as e:
-        print(f"HTTPError: {e.code} {e.reason}")
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-    return None
-
 def create_tables(cursor):
     # Track table: id, name, album_id, duration, popularity, explicit, track_number 
     #   connected to Artist by TrackArtist connector table
