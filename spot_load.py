@@ -134,7 +134,7 @@ def create_tables(cursor):
         CREATE TABLE IF NOT EXISTS Album (
             id TEXT PRIMARY KEY,
             name TEXT,
-            release_date INTEGER,
+            release_date TEXT,
             total_tracks INTEGER,
             label TEXT,
             album_type TEXT,
@@ -285,25 +285,11 @@ def dump_albums(cursor, albums):
         album_id = album['id']
         album_name = album['name']
         artist_ids = [artist['id'] for artist in album['artists']]
-        release_date_str = album['release_date']
-        release_date_pr = album['release_date_precision']
+        release_date = album['release_date']
         total_tracks = album['total_tracks']
         label = album['label']
         album_type = album['album_type']
         popularity = album['popularity']
-
-        # Convert release date to int
-        if release_date_pr == 'day': pass
-        elif release_date_pr == 'month': release_date_str = release_date_str[:7] + '-01'
-        elif release_date_pr == 'year': release_date_str = release_date_str[:4] + '-01-01'
-        else: release_date_str = None
-
-        if release_date_str is not None:
-            try:
-                release_date = int(datetime.datetime.strptime(release_date_str, "%Y-%m-%d").timestamp())
-            except Exception as e:
-                print(f"Error converting {release_date_str} to timestamp: {e}")
-                raise e
             
         print(f"Dumping album: {album_name}")
 
