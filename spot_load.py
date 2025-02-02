@@ -450,7 +450,7 @@ if __name__ == "__main__":
                 conn.commit() # Commit every 20 batches
                 conn.execute('''SELECT COUNT(*) FROM Track WHERE name IS NULL''')
                 print('Committing...')
-                print(f"Tracks remaining: {conn.fetchone()[0]}")
+                print(f"Tracks remaining: {cursor.fetchone()[0]}")
             i += 1
 
         i = 0
@@ -472,7 +472,7 @@ if __name__ == "__main__":
                 conn.commit() # Commit every 20 batches
                 conn.execute('''SELECT COUNT(*) FROM Album WHERE name IS NULL''')
                 print('Committing...')
-                print(f"Albums remaining: {conn.fetchone()[0]}")
+                print(f"Albums remaining: {cursor.fetchone()[0]}")
             i += 1
 
         i = 0
@@ -494,7 +494,7 @@ if __name__ == "__main__":
                 conn.commit() # Commit every 2 batches (slow)
                 conn.execute('''SELECT COUNT(*) FROM Artist WHERE name IS NULL''')
                 print('Committing...')
-                print(f"Artists remaining: {conn.fetchone()[0]}") 
+                print(f"Artists remaining: {cursor.fetchone()[0]}") 
             i += 1
 
         # Break if all queues are empty
