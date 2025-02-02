@@ -196,7 +196,8 @@ if __name__ == "__main__":
             id TEXT PRIMARY KEY,
             name TEXT,
             popularity INTEGER,
-            followers INTEGER
+            followers INTEGER, 
+            get_related INTEGER
         )
     ''')
 
@@ -244,16 +245,21 @@ if __name__ == "__main__":
 
     conn.commit()
 
-    # TODO: Spider logic:
-    # Initial setup:
-        # 1. Get user saved tracks info
-        # 2. Add track info to database
-        # 3. Add artist and album id's to queue
-    # Loop:
-    # 4. Get track id's from albums (batch request) and add to queue
-    # 5. Get track id's from artists (batch request) and add to queue
-    # 6. Get related artists and add to queue
-    # 7. Repeat until queue is empty
+    # Database loader flow
+    # 1. Setup
+    #    a. Get user saved tracks info
+    #    b. Add track info to database
+    # 2. Loop
+    #    a. Scan database for albums ids with no info and add to batch
+    #    b. Batch request album info, add to database
+    #  
+    #    c. Scan database for artists ids with no info and add to batch
+    #    d. get_related_artists and add to batch, set get_related to 1
+    #    e. Batch request artist info, add to database
+    #
+    #    f. Scan database for tracks ids with no info and add to batch
+    #    g. Batch request track info, add to database
+    # 3. Repeat until all queses are empty
     
     saved_tracks = get_user_saved(get_token())
     for track in saved_tracks:
