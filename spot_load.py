@@ -432,6 +432,7 @@ if __name__ == "__main__":
     # Priority: Tracks -> Albums -> Artists
     while True:
         # Tracks
+        i = 0
         while True:
             # Scan database for tracks with no info
             cursor.execute('SELECT id FROM Track WHERE name IS NULL LIMIT 50')
@@ -445,7 +446,10 @@ if __name__ == "__main__":
                 conn.commit()
                 print("No tracks to update, moving to albums")
                 break
+            if i % 20 == 0: conn.commit() # Commit every 20 batches
+            i += 1
 
+        i = 0
         # Albums
         while True:
             # Scan database for albums with no info
@@ -460,7 +464,10 @@ if __name__ == "__main__":
                 conn.commit() 
                 print("No albums to update, moving to artists")
                 break
+            if i % 20 == 0: conn.commit() # Commit every 20 batches
+            i += 1
 
+        i = 0
         # Artists
         while True:
             # Scan database for artists with no info
@@ -475,6 +482,8 @@ if __name__ == "__main__":
                 conn.commit()
                 print("No artists to update, starting over")
                 break
+            if i % 2 == 0: conn.commit() # Commit every 2 batches (slow)
+            i += 1
 
         # Break if all queues are empty
         if len(album_ids) == 0 and len(artist_ids) == 0 and len(track_ids) == 0:
