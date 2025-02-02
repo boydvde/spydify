@@ -286,11 +286,22 @@ def dump_albums(cursor, albums):
         album_id = album['id']
         album_name = album['name']
         artist_ids = [artist['id'] for artist in album['artists']]
-        release_date = int(datetime.datetime.strptime(album['release_date'], '%Y-%m-%d').strftime('%Y%m%d'))
+        release_date_str = album['release_date']
+        release_date_pr = album['release_date_precision']
         total_tracks = album['total_tracks']
         label = album['label']
         album_type = album['album_type']
         popularity = album['popularity']
+
+        # Convert release date to timestamp
+        if release_date_pr == 'day':
+            release_date = int(datetime.datetime.strptime(release_date_str, '%Y-%m-%d').timestamp())
+        elif release_date_pr == 'month':
+            release_date = int(datetime.datetime.strptime(release_date_str, '%Y-%m').timestamp())
+        elif release_date_pr == 'year':
+            release_date = int(datetime.datetime.strptime(release_date_str, '%Y').timestamp())
+        else:
+            release_date = None
 
         print(f"Dumping album: {album_name}")
 
@@ -345,18 +356,6 @@ def dump_artists(cursor, artists):
                 INSERT OR IGNORE INTO ArtistGenre (artist_id, genre_id)
                 VALUES (?, ?)
             ''', (artist_id, cursor.lastrowid))
-        
-        # # TODO: Insert related artist into the Artist table for later processing
-        # related = get_related_artists(artist_id)
-        # with open("debug/related.json", "w") as f:
-        #     json.dump(related, f, indent=2)
-        # if related:
-        #     for artist in related:
-        #         artist_id = artist['id']
-        #         cursor.execute('''
-        #             INSERT OR IGNORE INTO Artist (id, get_related)
-        #             VALUES (?, 0)
-        #         ''', (artist_id,))
 
 def __generate_debug_json():
     '''
