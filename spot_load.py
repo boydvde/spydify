@@ -387,11 +387,10 @@ if __name__ == "__main__":
     #    b. Batch request album info, add to database
     #  
     #    c. Scan database for artists ids with no info and add to batch
-    #    d. get_related_artists() and add to batch, set get_related to 1
-    #    e. Batch request artist info, add to database
+    #    d. Batch request artist info, add to database
     #
-    #    f. Scan database for tracks ids with no info and add to batch
-    #    g. Batch request track info, add to database
+    #    e. Scan database for tracks ids with no info and add to batch
+    #    f. Batch request track info, add to database
     # 3. Repeat until all queses are empty
 
     # Connect to the SQLite database
