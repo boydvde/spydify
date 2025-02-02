@@ -446,7 +446,11 @@ if __name__ == "__main__":
                 conn.commit()
                 print("No tracks to update, moving to albums")
                 break
-            if i % 20 == 0: conn.commit() # Commit every 20 batches
+            if i % 20 == 0: 
+                conn.commit() # Commit every 20 batches
+                conn.execute('''SELECT COUNT(*) FROM Track WHERE name IS NULL''')
+                print('Committing...')
+                print(f"Tracks remaining: {conn.fetchone()[0]}")
             i += 1
 
         i = 0
@@ -464,7 +468,11 @@ if __name__ == "__main__":
                 conn.commit() 
                 print("No albums to update, moving to artists")
                 break
-            if i % 20 == 0: conn.commit() # Commit every 20 batches
+            if i % 20 == 0: 
+                conn.commit() # Commit every 20 batches
+                conn.execute('''SELECT COUNT(*) FROM Album WHERE name IS NULL''')
+                print('Committing...')
+                print(f"Albums remaining: {conn.fetchone()[0]}")
             i += 1
 
         i = 0
@@ -482,7 +490,11 @@ if __name__ == "__main__":
                 conn.commit()
                 print("No artists to update, starting over")
                 break
-            if i % 2 == 0: conn.commit() # Commit every 2 batches (slow)
+            if i % 2 == 0: 
+                conn.commit() # Commit every 2 batches (slow)
+                conn.execute('''SELECT COUNT(*) FROM Artist WHERE name IS NULL''')
+                print('Committing...')
+                print(f"Artists remaining: {conn.fetchone()[0]}") 
             i += 1
 
         # Break if all queues are empty
