@@ -318,6 +318,12 @@ def dump_albums(cursor, albums):
         label = album['label']
         album_type = album['album_type']
         popularity = album['popularity']
+
+        # Convert release date to ISO format
+        if len(release_date) == 4: release_date = f"{release_date}-01-01"
+        elif len(release_date) == 7: release_date = f"{release_date}-01"
+        elif len(release_date) == 10: pass
+        else: raise ValueError(f"Invalid release date: {release_date}")
             
         print(f"Dumping album: {album_name}")
 
@@ -396,7 +402,7 @@ if __name__ == "__main__":
     #    b. Batch request album info, add to database
     #  
     #    c. Scan database for artists ids with no info and add to batch
-    #    d. Batch request artist info, add to database
+    #    d. Batch request artist info, add to database (also get artist's albums SLOW!!!)
     #
     #    e. Scan database for tracks ids with no info and add to batch
     #    f. Batch request track info, add to database
