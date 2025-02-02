@@ -108,8 +108,8 @@ def get_token():
     # Check if the access token exists and is less than an hour old
     if os.path.exists(ACCESS_TOKEN_PATH):
         token_age = time.time() - os.path.getmtime(ACCESS_TOKEN_PATH) # seconds
-        print(f"Token age: {token_age} seconds.")
-        if token_age < 3600:
+        # print(f"Token age: {token_age} seconds.")
+        if token_age < 3540: # 59 minutes
             with open(ACCESS_TOKEN_PATH, "r") as access_token_file:
                 return access_token_file.readline().strip()
 
