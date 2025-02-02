@@ -16,7 +16,7 @@ ctx = ssl.create_default_context()
 ctx.check_hostname = False
 ctx.verify_mode = ssl.CERT_NONE
 
-debug = True
+DEBUG = True
 
 def get_info(item_type, item_id, retries=3):
     """
@@ -415,7 +415,7 @@ if __name__ == "__main__":
     conn = sqlite3.connect("db/spotify.sqlite")
     cursor = conn.cursor()
 
-    if debug:
+    if DEBUG:
         __generate_debug_json()
         delete_tables(cursor)
     
