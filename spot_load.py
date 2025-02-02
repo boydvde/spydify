@@ -462,3 +462,8 @@ if __name__ == "__main__":
             if track_batch is not None: dump_tracks(cursor, track_batch['tracks'])
         else: print("No tracks to update")
         conn.commit()
+
+        # Break if all queues are empty
+        if len(album_ids) == 0 and len(artist_ids) == 0 and len(track_ids) == 0:
+            print("All queues are empty, exiting...")
+            break
