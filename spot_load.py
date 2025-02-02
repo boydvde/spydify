@@ -293,16 +293,19 @@ def dump_albums(cursor, albums):
         album_type = album['album_type']
         popularity = album['popularity']
 
-        # Convert release date to timestamp
-        if release_date_pr == 'day':
-            release_date = int(datetime.datetime.strptime(release_date_str, '%Y-%m-%d').timestamp())
-        elif release_date_pr == 'month':
-            release_date = int(datetime.datetime.strptime(release_date_str, '%Y-%m').timestamp())
-        elif release_date_pr == 'year':
-            release_date = int(datetime.datetime.strptime(release_date_str, '%Y').timestamp())
-        else:
-            release_date = None
+        # Convert release date to int
+        if release_date_pr == 'day': pass
+        elif release_date_pr == 'month': release_date_str = release_date_str[:7] + '-01'
+        elif release_date_pr == 'year': release_date_str = release_date_str[:4] + '-01-01'
+        else: release_date_str = None
 
+        if release_date_str is not None:
+            try:
+                release_date = int(datetime.datetime.strptime(release_date_str, "%Y-%m-%d").timestamp())
+            except Exception as e:
+                print(f"Error converting {release_date_str} to timestamp: {e}")
+                raise e
+            
         print(f"Dumping album: {album_name}")
 
         # Insert into the Album table
