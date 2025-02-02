@@ -384,14 +384,17 @@ if __name__ == "__main__":
     conn = sqlite3.connect("db/spotify.sqlite")
     cursor = conn.cursor()
     
-    # Create the tables if they don't exist
-    create_tables(cursor)
-    conn.commit()
-    
-    # Initial dump: Get user saved tracks and add to the database
-    saved_tracks = get_user_saved()
-    dump_user_saved(cursor, saved_tracks)
-    conn.commit()
+    # Check if running for the first time by checking if tables exist
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='Track'")
+    if cursor.fetchone() is None:
+        # Create the tables if they don't exist
+        create_tables(cursor)
+        conn.commit()
+        
+        # Initial dump: Get user saved tracks and add to the database
+        saved_tracks = get_user_saved()
+        dump_user_saved(cursor, saved_tracks)
+        conn.commit()
 
     # Loop until all queues are empty
     while True:
