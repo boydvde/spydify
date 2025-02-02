@@ -111,6 +111,34 @@ def get_user_saved():
             break
     return items
 
+def get_artist_albums(artist_id, retries=3):
+    limit = 50
+    offset = 0
+    total = limit + 1
+    items = []
+    while offset < total:
+        req = urllib.request.Request(f'https://api.spotify.com/v1/artists/{artist_id}/albums?limit={limit}&offset={offset}', method="GET")
+        req.add_header('Authorization', f'Bearer {get_token()}')
+        try:
+            with urllib.request.urlopen(req) as r:
+                content = r.read().decode()
+                js = json.loads(content)
+                total = js['total']
+                items.extend(js['items'])
+                offset += limit
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and retries > 0:
+                retry_after = int(e.headers.get('Retry-After', 1))
+                print(f"Rate limited. Retrying after {retry_after} seconds...")
+                time.sleep(retry_after)
+                return get_artist_albums(artist_id, retries - 1)
+            print(f"HTTPError: {e.code} {e.reason}")
+            break
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            break
+    return items
+
 def create_tables(cursor):
     # Track table: id, name, album_id, duration, popularity, explicit, track_number 
     #   connected to Artist by TrackArtist connector table
@@ -325,6 +353,7 @@ def dump_artists(cursor, artists):
         popularity = artist['popularity']
         followers = artist['followers']['total']
         genres = artist['genres']
+        albums = get_artist_albums(artist_id)
 
         print(f"Dumping artist: {artist_name}")
 
@@ -344,6 +373,14 @@ def dump_artists(cursor, artists):
                 INSERT OR IGNORE INTO ArtistGenre (artist_id, genre_id)
                 VALUES (?, ?)
             ''', (artist_id, cursor.lastrowid))
+
+        # Insert into the Album table
+        for album in albums:
+            album_id = album['id']
+            cursor.execute('''
+                INSERT OR IGNORE INTO Album (id)
+                VALUES (?) 
+            ''', (album_id,))
 
 if __name__ == "__main__":
     # Check if logged in, else login
