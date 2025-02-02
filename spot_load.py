@@ -1,7 +1,6 @@
-import os, ssl, json, time, sqlite3
+import os, ssl, json, time, datetime, sqlite3
 import urllib.request, urllib.error, urllib.parse
 from dotenv import load_dotenv
-
 from spot_access import get_token, login
 
 # Load the environment variables and define file paths
@@ -16,6 +15,8 @@ REFRESH_TOKEN_PATH = "temp/refresh_token"
 ctx = ssl.create_default_context()
 ctx.check_hostname = False
 ctx.verify_mode = ssl.CERT_NONE
+
+debug = True
 
 def get_info(item_type, item_id, retries=3):
     """
@@ -61,7 +62,9 @@ def get_batch_info(item_type, item_ids, retries=3):
         raise ValueError(f"Invalid item_type. Expected one of {valid_types}")
     
     if len(item_ids) == 0: return None
-    elif len(item_ids) > 50: raise ValueError("Maximum number of items is 50")
+    elif item_type == 'track' and len(item_ids) > 50: raise ValueError("Max batch size of tracks is 50")
+    elif item_type == 'artist' and len(item_ids) > 50: raise ValueError("Max batch size of artists is 50")
+    elif item_type == 'album' and len(item_ids) > 20: raise ValueError("Max batch size of albums is 20")
     
     ids = ','.join(item_ids)
     req = urllib.request.Request(f'https://api.spotify.com/v1/{item_type}s?ids={ids}', method="GET")
@@ -70,6 +73,7 @@ def get_batch_info(item_type, item_ids, retries=3):
         with urllib.request.urlopen(req) as r:
             content = r.read().decode()
             return json.loads(content)
+        
     # Recursively retry the request if rate limited (max retries = 3), else print the error
     except urllib.error.HTTPError as e:
         if e.code == 429 and retries > 0:
@@ -84,14 +88,14 @@ def get_batch_info(item_type, item_ids, retries=3):
         print(f"Unexpected error: {e}")
     return None
     
-def get_user_saved(token):
+def get_user_saved():
     limit = 50
     offset = 0
     total = limit + 1
     items = []
     while offset < total:
         req = urllib.request.Request(f'https://api.spotify.com/v1/me/tracks?limit={limit}&offset={offset}', method="GET")
-        req.add_header('Authorization', f'Bearer {token}')
+        req.add_header('Authorization', f'Bearer {get_token()}')
         try:
             with urllib.request.urlopen(req) as r:
                 content = r.read().decode()
@@ -107,6 +111,7 @@ def get_user_saved(token):
             break
     return items
 
+# TODO fix ???
 def get_related_artists(artist_id):
     req = urllib.request.Request(f'https://api.spotify.com/v1/artists/{artist_id}/related-artists', method="GET")
     req.add_header('Authorization', f'Bearer {get_token()}')
@@ -114,49 +119,14 @@ def get_related_artists(artist_id):
         with urllib.request.urlopen(req) as r:
             content = r.read().decode()
             js = json.loads(content)
-            return js['artists']
+            return js
     except urllib.error.HTTPError as e:
         print(f"HTTPError: {e.code} {e.reason}")
     except Exception as e:
         print(f"Unexpected error: {e}")
     return None
 
-def pretty_print(item_type, data):
-    i = 1
-    if item_type == 'track': print(f"{data['name']} by {data['artists'][0]['name']}")
-    elif item_type == 'album':
-        print(f"\nAlbum: {data['name']} by {data['artists'][0]['name']}")
-        for track in data['tracks']['items']: print(f'{i}.', track['name']); i += 1
-    elif item_type == 'artist': print(f"\nArtist: {data['name']}")
-    elif item_type == 'playlist':
-        print(f"\nPlaylist: {data['name']} by {data['owner']['display_name']}")
-        for track in data['tracks']['items']: print(f'{i}.', track['track']['name'], "by", track['track']['artists'][0]['name']); i += 1
-
-def __generate_debug_json():
-    '''
-    Generate JSON files for debugging purposes
-    '''
-    # Save track info for debugging
-    track = get_info('track', '3AwmE4xsRfgjtIPLMyvL9i')
-    json.dump(track, open("debug/track.json", "w"), indent=2) 
-
-    # Save album info for debugging
-    album = get_info('album', '29sKvBpV3odDmSp5Cc3P1V')
-    json.dump(album, open("debug/album.json", "w"), indent=2)
-
-    # Save artist info for debugging
-    artist = get_info('artist', '7sJ3ngSMvvXGdVLnODPqXa')
-    json.dump(artist, open("debug/artist.json", "w"), indent=2)
-
-if __name__ == "__main__":
-    # Check if logged in, else login
-    if not os.path.exists(REFRESH_TOKEN_PATH) or get_token() is None: login()
-
-    # Connect to the SQLite database
-    os.makedirs("db", exist_ok=True)
-    conn = sqlite3.connect("db/spotify.sqlite")
-    cursor = conn.cursor()
-
+def create_tables(cursor):
     # Track table: id, name, album_id, duration, popularity, explicit, track_number 
     #   connected to Artist by TrackArtist connector table
     #   connected to Album by album_id
@@ -179,7 +149,7 @@ if __name__ == "__main__":
         CREATE TABLE IF NOT EXISTS Album (
             id TEXT PRIMARY KEY,
             name TEXT,
-            release_date TEXT,
+            release_date INTEGER,
             total_tracks INTEGER,
             label TEXT,
             album_type TEXT,
@@ -206,7 +176,7 @@ if __name__ == "__main__":
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS Genre (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT
+            name TEXT UNIQUE
         )
     ''')
 
@@ -243,49 +213,252 @@ if __name__ == "__main__":
         )
     ''')
 
-    conn.commit()
+def delete_tables(cursor):
+    cursor.execute('DROP TABLE IF EXISTS Track')
+    cursor.execute('DROP TABLE IF EXISTS Album')
+    cursor.execute('DROP TABLE IF EXISTS Artist')
+    cursor.execute('DROP TABLE IF EXISTS Genre')
+    cursor.execute('DROP TABLE IF EXISTS TrackArtist')
+    cursor.execute('DROP TABLE IF EXISTS AlbumArtist')
+    cursor.execute('DROP TABLE IF EXISTS ArtistGenre')
 
-    # Database loader flow
-    # 1. Setup
-    #    a. Get user saved tracks info
-    #    b. Add track info to database
-    # 2. Loop
-    #    a. Scan database for albums ids with no info and add to batch
-    #    b. Batch request album info, add to database
-    #  
-    #    c. Scan database for artists ids with no info and add to batch
-    #    d. get_related_artists and add to batch, set get_related to 1
-    #    e. Batch request artist info, add to database
-    #
-    #    f. Scan database for tracks ids with no info and add to batch
-    #    g. Batch request track info, add to database
-    # 3. Repeat until all queses are empty
-    
-    saved_tracks = get_user_saved(get_token())
+def dump_user_saved(cursor, saved_tracks):
     for track in saved_tracks:
         track_id = track['track']['id']
-        track_name = track['track']['name']     
-        artist_ids = [artist['id'] for artist in track['track']['artists']] 
+        track_name = track['track']['name']
+        artist_ids = [artist['id'] for artist in track['track']['artists']]
         album_id = track['track']['album']['id']
         duration = int(track['track']['duration_ms'])
         popularity = int(track['track']['popularity'])
         explicit = int(track['track']['explicit'])
         track_number = int(track['track']['track_number'])
 
-        print(track_id, track_name, album_id, duration, popularity, explicit, track_number)
+        print(f"Dumping track: {track_name}")
 
         # Insert into the Track table
         cursor.execute('''
-            INSERT OR IGNORE INTO Track (id, name, album_id, duration, popularity, explicit, track_number)
+            INSERT OR REPLACE INTO Track (id, name, album_id, duration, popularity, explicit, track_number)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', (track_id, track_name, album_id, duration, popularity, explicit, track_number))
 
-        # Insert into the TrackArtist table
+        # Insert into the TrackArtist table and Artist table
         for artist_id in artist_ids:
             cursor.execute('''
                 INSERT OR IGNORE INTO TrackArtist (track_id, artist_id)
                 VALUES (?, ?)
             ''', (track_id, artist_id))
+            cursor.execute('''
+                INSERT OR IGNORE INTO Artist (id, get_related)
+                VALUES (?, 0)
+            ''', (artist_id,))
         
+        # Insert into the Album table
+        album_id = track['track']['album']['id']
+        cursor.execute('''
+                INSERT OR IGNORE INTO Album (id)
+                VALUES (?)
+            ''', (album_id,))
 
+def dump_tracks(cursor, tracks):
+    for track in tracks:
+        track_id = track['id']
+        track_name = track['name']     
+        artist_ids = [artist['id'] for artist in track['artists']] 
+        album_id = track['album']['id']
+        duration = int(track['duration_ms'])
+        popularity = int(track['popularity'])
+        explicit = int(track['explicit'])
+        track_number = int(track['track_number'])
+
+        print(f"Dumping track: {track_name}")
+
+        # Insert into the Track table
+        cursor.execute('''
+            INSERT OR REPLACE INTO Track (id, name, album_id, duration, popularity, explicit, track_number)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (track_id, track_name, album_id, duration, popularity, explicit, track_number))
+
+        # Insert into the TrackArtist table and Artist table
+        for artist_id in artist_ids:
+            cursor.execute('''
+                INSERT OR IGNORE INTO TrackArtist (track_id, artist_id)
+                VALUES (?, ?)
+            ''', (track_id, artist_id))
+            cursor.execute('''
+                INSERT OR IGNORE INTO Artist (id, get_related)
+                VALUES (?, 0)
+            ''', (artist_id,))
+        
+        # Insert into the Album table
+        album_id = track['album']['id']
+        cursor.execute('''
+                INSERT OR IGNORE INTO Album (id)
+                VALUES (?)
+            ''', (album_id,))
+
+def dump_albums(cursor, albums):
+    for album in albums:
+        album_id = album['id']
+        album_name = album['name']
+        artist_ids = [artist['id'] for artist in album['artists']]
+        release_date = int(datetime.datetime.strptime(album['release_date'], '%Y-%m-%d').strftime('%Y%m%d'))
+        total_tracks = album['total_tracks']
+        label = album['label']
+        album_type = album['album_type']
+        popularity = album['popularity']
+
+        print(f"Dumping album: {album_name}")
+
+        # Insert into the Album table
+        cursor.execute('''
+            INSERT OR REPLACE INTO Album (id, name, release_date, total_tracks, label, album_type, popularity)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (album_id, album_name, release_date, total_tracks, label, album_type, popularity))
+
+        # Insert into the AlbumArtist table and Artist table
+        for artist_id in artist_ids:
+            cursor.execute('''
+                INSERT OR IGNORE INTO AlbumArtist (album_id, artist_id)
+                VALUES (?, ?)
+            ''', (album_id, artist_id))
+            cursor.execute('''
+                INSERT OR IGNORE INTO Artist (id, get_related)
+                VALUES (?, 0)
+            ''', (artist_id,))
+        
+        # Insert into the Track table
+        for track in album['tracks']['items']:
+            track_id = track['id']
+            cursor.execute('''
+                INSERT OR IGNORE INTO Track (id)
+                VALUES (?) 
+            ''', (track_id,))
+
+def dump_artists(cursor, artists):
+    for artist in artists:
+        artist_id = artist['id']
+        artist_name = artist['name']
+        popularity = artist['popularity']
+        followers = artist['followers']['total']
+        genres = artist['genres']
+
+        print(f"Dumping artist: {artist_name}")
+
+        # Insert into the Artist table
+        cursor.execute('''
+            INSERT OR REPLACE INTO Artist (id, name, popularity, followers, get_related)
+            VALUES (?, ?, ?, ?, 0)
+        ''', (artist_id, artist_name, popularity, followers))
+
+        # Insert into the ArtistGenre table and Genre table
+        for genre in genres:
+            cursor.execute('''
+                INSERT OR IGNORE INTO Genre (name)
+                VALUES (?)
+            ''', (genre,))
+            cursor.execute('''
+                INSERT OR IGNORE INTO ArtistGenre (artist_id, genre_id)
+                VALUES (?, ?)
+            ''', (artist_id, cursor.lastrowid))
+        
+        # # TODO: Insert related artist into the Artist table for later processing
+        # related = get_related_artists(artist_id)
+        # with open("debug/related.json", "w") as f:
+        #     json.dump(related, f, indent=2)
+        # if related:
+        #     for artist in related:
+        #         artist_id = artist['id']
+        #         cursor.execute('''
+        #             INSERT OR IGNORE INTO Artist (id, get_related)
+        #             VALUES (?, 0)
+        #         ''', (artist_id,))
+
+def __generate_debug_json():
+    '''
+    Generate JSON files for debugging purposes
+    '''
+    # Save track info for debugging
+    track = get_info('track', '3AwmE4xsRfgjtIPLMyvL9i')
+    json.dump(track, open("debug/track.json", "w"), indent=2) 
+
+    # Save album info for debugging
+    album = get_info('album', '29sKvBpV3odDmSp5Cc3P1V')
+    json.dump(album, open("debug/album.json", "w"), indent=2)
+
+    # Save artist info for debugging
+    artist = get_info('artist', '7sJ3ngSMvvXGdVLnODPqXa')
+    json.dump(artist, open("debug/artist.json", "w"), indent=2)
+
+if __name__ == "__main__":
+    # Check if logged in, else login
+    if not os.path.exists(REFRESH_TOKEN_PATH) or get_token() is None: login()
+
+    # Database loader flow
+    # 1. Setup
+    #    a. Create tables 
+    #    b. Get user saved tracks info
+    #    c. Initial dump of user saved tracks into database
+    # 2. Loop
+    #    a. Scan database for albums ids with no info and add to batch
+    #    b. Batch request album info, add to database
+    #  
+    #    c. Scan database for artists ids with no info and add to batch
+    #    d. get_related_artists() and add to batch, set get_related to 1
+    #    e. Batch request artist info, add to database
+    #
+    #    f. Scan database for tracks ids with no info and add to batch
+    #    g. Batch request track info, add to database
+    # 3. Repeat until all queses are empty
+
+    # Connect to the SQLite database
+    os.makedirs("db", exist_ok=True)
+    conn = sqlite3.connect("db/spotify.sqlite")
+    cursor = conn.cursor()
+
+    if debug:
+        __generate_debug_json()
+        delete_tables(cursor)
+    
+    # Create the tables if they don't exist
+    create_tables(cursor)
     conn.commit()
+    
+    # Initial dump: Get user saved tracks and add to the database
+    saved_tracks = get_user_saved()
+    dump_user_saved(cursor, saved_tracks)
+    conn.commit()
+
+    # Loop until all queues are empty
+    while True:
+        # Scan database for albums with no info
+        cursor.execute('SELECT id FROM Album WHERE name IS NULL LIMIT 20')
+        album_ids = [row[0] for row in cursor.fetchall()]
+
+        # Batch request album info and add to database
+        if len(album_ids) > 0:
+            album_batch = get_batch_info('album', album_ids)
+            if album_batch is not None: dump_albums(cursor, album_batch['albums'])
+        else: print("No albums to update")
+        conn.commit()
+
+        # Scan database for artists with no info
+        cursor.execute('SELECT id FROM Artist WHERE name IS NULL LIMIT 50')
+        artist_ids = [row[0] for row in cursor.fetchall()]
+
+        # Batch request artist info and add to database
+        if len(artist_ids) > 0:
+            artist_batch = get_batch_info('artist', artist_ids)
+            if artist_batch is not None: dump_artists(cursor, artist_batch['artists'])
+        else: print("No artists to update")
+        conn.commit()
+
+        # Scan database for tracks with no info
+        cursor.execute('SELECT id FROM Track WHERE name IS NULL LIMIT 50')
+        track_ids = [row[0] for row in cursor.fetchall()]
+
+        # Batch request track info and add to database
+        if len(track_ids) > 0:
+            track_batch = get_batch_info('track', track_ids)
+            if track_batch is not None: dump_tracks(cursor, track_batch['tracks'])
+        else: print("No tracks to update")
+        conn.commit()
