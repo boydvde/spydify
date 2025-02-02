@@ -432,7 +432,7 @@ if __name__ == "__main__":
     # Priority: Tracks -> Albums -> Artists
     while True:
         # Tracks
-        i = 0
+        i = 1
         while True:
             # Scan database for tracks with no info
             cursor.execute('SELECT id FROM Track WHERE name IS NULL LIMIT 50')
@@ -447,14 +447,14 @@ if __name__ == "__main__":
                 print("No tracks to update, moving to albums")
                 break
             if i % 20 == 0: 
-                conn.commit() # Commit every 20 batches
-                conn.execute('''SELECT COUNT(*) FROM Track WHERE name IS NULL''')
-                print('Committing...')
-                print(f"Tracks remaining: {cursor.fetchone()[0]}")
+                conn.commit() # Commit every 20 batches (1000 tracks)
+                cursor.execute('''SELECT COUNT(id) FROM Track WHERE name IS NULL''')
+                tracks_remaining = cursor.fetchone()[0]
+                print(f"Committing... Tracks remaining: {tracks_remaining}")
             i += 1
 
-        i = 0
         # Albums
+        i = 1
         while True:
             # Scan database for albums with no info
             cursor.execute('SELECT id FROM Album WHERE name IS NULL LIMIT 20')
@@ -469,14 +469,14 @@ if __name__ == "__main__":
                 print("No albums to update, moving to artists")
                 break
             if i % 20 == 0: 
-                conn.commit() # Commit every 20 batches
-                conn.execute('''SELECT COUNT(*) FROM Album WHERE name IS NULL''')
-                print('Committing...')
-                print(f"Albums remaining: {cursor.fetchone()[0]}")
+                conn.commit() # Commit every 20 batches (400 albums)
+                cursor.execute('''SELECT COUNT(id) FROM Album WHERE name IS NULL''')
+                albums_remaining = cursor.fetchone()[0]
+                print(f"Committing... Albums remaining: {albums_remaining}")
             i += 1
 
-        i = 0
         # Artists
+        i = 1
         while True:
             # Scan database for artists with no info
             cursor.execute('SELECT id FROM Artist WHERE name IS NULL LIMIT 50')
@@ -491,10 +491,10 @@ if __name__ == "__main__":
                 print("No artists to update, starting over")
                 break
             if i % 2 == 0: 
-                conn.commit() # Commit every 2 batches (slow)
-                conn.execute('''SELECT COUNT(*) FROM Artist WHERE name IS NULL''')
-                print('Committing...')
-                print(f"Artists remaining: {cursor.fetchone()[0]}") 
+                conn.commit() # Commit every 2 batches (100 artists)
+                cursor.execute('''SELECT COUNT(id) FROM Artist WHERE name IS NULL''')
+                artists_remaining = cursor.fetchone()[0]
+                print(f"Committing... Artists remaining: {artists_remaining}")
             i += 1
 
         # Break if all queues are empty
