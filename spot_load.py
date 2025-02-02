@@ -393,19 +393,22 @@ if __name__ == "__main__":
     if not os.path.exists(REFRESH_TOKEN_PATH) or get_token() is None: login()
 
     # Database loader flow
-    # 1. Setup
-    #    a. Create tables 
-    #    b. Get user saved tracks info
-    #    c. Initial dump of user saved tracks into database
+    # 1. Setup 
+    #   a. Create tables 
+    #   b. Get user saved tracks info
+    #   c. Initial dump of user saved tracks into database
     # 2. Loop
-    #    a. Scan database for albums ids with no info and add to batch
-    #    b. Batch request album info, add to database
-    #  
-    #    c. Scan database for artists ids with no info and add to batch
-    #    d. Batch request artist info, add to database (also get artist's albums SLOW!!!)
-    #
-    #    e. Scan database for tracks ids with no info and add to batch
-    #    f. Batch request track info, add to database
+    #   a. Scan database for tracks ids with no info and add to batch
+    #   b. Batch request track info, add to database
+    #   c. Repeat until all tracks are updated
+    #   
+    #   a. Scan database for albums ids with no info and add to batch
+    #   b. Batch request album info, add to database
+    #   c. Repeat until all albums are updated 
+    #   
+    #   a. Scan database for artists ids with no info and add to batch
+    #   b. Batch request artist info, add to database (also get artist's albums) SLOW!!!
+    #   c. Repeat until all artists are updated
     # 3. Repeat until all queses are empty
 
     # Connect to the SQLite database
