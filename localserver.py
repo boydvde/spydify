@@ -2,6 +2,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import urllib.parse
 import json
 
+# TODO: Not hardcode the host and port
 hostName = "localhost"
 serverPort = 3000
 auth_code = None

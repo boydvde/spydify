@@ -4,14 +4,14 @@ from collections import deque
 from dotenv import load_dotenv
 from spot_access import get_token, login
 
-# Load the environment variables and define file paths
+# Load the environment variables
 load_dotenv()
-client_id = os.getenv('CLIENT_ID')
-client_secret = os.getenv('CLIENT_SECRET')
-redirect_uri = os.getenv('REDIRECT_URI')
-ACCESS_TOKEN_PATH = "temp/access_token"
-REFRESH_TOKEN_PATH = "temp/refresh_token"
-DEBUG = True
+CLIENT_ID = os.getenv('CLIENT_ID')
+CLIENT_SECRET = os.getenv('CLIENT_SECRET')
+REDIRECT_URI = os.getenv('REDIRECT_URI')
+ACCESS_TOKEN_PATH = os.getenv('ACCESS_TOKEN_PATH')
+REFRESH_TOKEN_PATH = os.getenv('REFRESH_TOKEN_PATH')
+DEBUG = os.getenv('DEBUG', False)
 
 # Create an SSL context to ignore certificate verification
 ctx = ssl.create_default_context()

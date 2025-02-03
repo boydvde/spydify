@@ -2,13 +2,14 @@ import os, time, ssl, json, webbrowser, base64
 import urllib.request, urllib.error, urllib.parse
 from dotenv import load_dotenv
 
-# Load the environment variables and define file paths
+# Load the environment variables
 load_dotenv()
-client_id = os.getenv('CLIENT_ID')
-client_secret = os.getenv('CLIENT_SECRET')
-redirect_uri = os.getenv('REDIRECT_URI')
-ACCESS_TOKEN_PATH = "temp/access_token"
-REFRESH_TOKEN_PATH = "temp/refresh_token"
+CLIENT_ID = os.getenv('CLIENT_ID')
+CLIENT_SECRET = os.getenv('CLIENT_SECRET')
+REDIRECT_URI = os.getenv('REDIRECT_URI')
+ACCESS_TOKEN_PATH = os.getenv('ACCESS_TOKEN_PATH')
+REFRESH_TOKEN_PATH = os.getenv('REFRESH_TOKEN_PATH')
+DEBUG = os.getenv('DEBUG', False)
 
 # Create an SSL context to ignore certificate verification
 ctx = ssl.create_default_context()
@@ -27,9 +28,9 @@ def user_auth(scope: list=None):
         scope = []
     endpoint = 'https://accounts.spotify.com/authorize?'
     params = urllib.parse.urlencode({
-        'client_id': client_id,
+        'client_id': CLIENT_ID,
         'response_type': 'code',
-        'redirect_uri': redirect_uri, 
+        'redirect_uri': REDIRECT_URI, 
         'scope': ' '.join(scope)
     })
     webbrowser.open(f'{endpoint}{params}')
@@ -69,11 +70,11 @@ def exchange_auth_code(code: str):
     data = urllib.parse.urlencode({
         'grant_type': 'authorization_code',
         'code': code,
-        'redirect_uri': redirect_uri,
+        'redirect_uri': REDIRECT_URI,
     }).encode()
     req = urllib.request.Request('https://accounts.spotify.com/api/token', data=data, method="POST")
     req.add_header('Content-Type', 'application/x-www-form-urlencoded')
-    req.add_header('Authorization', 'Basic ' + base64.b64encode(f'{client_id}:{client_secret}'.encode()).decode())
+    req.add_header('Authorization', 'Basic ' + base64.b64encode(f'{CLIENT_ID}:{CLIENT_SECRET}'.encode()).decode())
     
     # Retrieve the response from the server
     try:
@@ -134,7 +135,7 @@ def get_token():
     }).encode()
     req = urllib.request.Request('https://accounts.spotify.com/api/token', data=data, method="POST")
     req.add_header('Content-Type', 'application/x-www-form-urlencoded')
-    req.add_header('Authorization', 'Basic ' + base64.b64encode(f'{client_id}:{client_secret}'.encode()).decode())
+    req.add_header('Authorization', 'Basic ' + base64.b64encode(f'{CLIENT_ID}:{CLIENT_SECRET}'.encode()).decode())
 
     try:
         # Retrieve the response
