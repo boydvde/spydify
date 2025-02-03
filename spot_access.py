@@ -9,7 +9,9 @@ CLIENT_SECRET = os.getenv('CLIENT_SECRET')
 REDIRECT_URI = os.getenv('REDIRECT_URI')
 ACCESS_TOKEN_PATH = os.getenv('ACCESS_TOKEN_PATH')
 REFRESH_TOKEN_PATH = os.getenv('REFRESH_TOKEN_PATH')
-DEBUG = os.getenv('DEBUG', False)
+DEBUG = os.getenv('DEBUG', 'False').lower() in ('1', 'true', 'yes')
+
+print("Debug mode:", DEBUG)
 
 # Create an SSL context to ignore certificate verification
 ctx = ssl.create_default_context()
