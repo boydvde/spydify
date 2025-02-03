@@ -43,7 +43,8 @@ def check_rate_limit():
     Check if the rate limit has been reached and wait if necessary.
     """
     request_count = get_request_count()
-    print(f'Requests in the last 30 seconds: {request_count}')
+    if DEBUG:
+        print(f'Requests in the last 30 seconds: {request_count}')
     if request_count >= 30:
         print("Rate limited. Waiting 30 seconds...")
         time.sleep(30)
@@ -77,8 +78,9 @@ def get_info(item_type, item_id, retries=3):
     except urllib.error.HTTPError as e:
         if e.code == 429 and retries > 0:
             retry_after = int(e.headers.get('Retry-After', 1))
-            print(f"Rate limited. Retrying after {retry_after} seconds...")
-            time.sleep(retry_after)
+            wait_time = retry_after * (2 ** (3 - retries))
+            print(f"Rate limited. Retrying after {wait_time} seconds...")
+            time.sleep(wait_time)
             return get_info(item_type, item_id, retries - 1)
         print(f"HTTPError: {e.code} - {e.reason}")
     except json.JSONDecodeError as e:
@@ -109,8 +111,9 @@ def get_batch_info(item_type, item_ids, retries=3):
     except urllib.error.HTTPError as e:
         if e.code == 429 and retries > 0:
             retry_after = int(e.headers.get('Retry-After', 1))
-            print(f"Rate limited. Retrying after {retry_after} seconds...")
-            time.sleep(retry_after)
+            wait_time = retry_after * (2 ** (3 - retries))
+            print(f"Rate limited. Retrying after {wait_time} seconds...")
+            time.sleep(wait_time)
             return get_batch_info(item_type, item_ids, retries - 1)
         print(f"HTTPError: {e.code} - {e.reason}")
     except json.JSONDecodeError as e:
@@ -119,7 +122,7 @@ def get_batch_info(item_type, item_ids, retries=3):
         print(f"Unexpected error: {e}")
     return None
     
-def get_user_saved():
+def get_user_saved(retries=3):
     limit = 50
     offset = 0
     total = limit + 1
@@ -137,6 +140,12 @@ def get_user_saved():
                 items.extend(js['items'])
                 offset += limit
         except urllib.error.HTTPError as e:
+            if e.code == 429 and retries > 0:
+                retry_after = int(e.headers.get('Retry-After', 1))
+                wait_time = retry_after * (2 ** (3 - retries))
+                print(f"Rate limited. Retrying after {wait_time} seconds...")
+                time.sleep(wait_time)
+                return get_user_saved(retries - 1)
             print(f"HTTPError: {e.code} {e.reason}")
             break
         except Exception as e:
@@ -164,8 +173,9 @@ def get_artist_albums(artist_id, retries=3):
         except urllib.error.HTTPError as e:
             if e.code == 429 and retries > 0:
                 retry_after = int(e.headers.get('Retry-After', 1))
-                print(f"Rate limited. Retrying after {retry_after} seconds...")
-                time.sleep(retry_after)
+                wait_time = retry_after * (2 ** (3 - retries))
+                print(f"Rate limited. Retrying after {wait_time} seconds...")
+                time.sleep(wait_time)
                 return get_artist_albums(artist_id, retries - 1)
             print(f"HTTPError: {e.code} {e.reason}")
             break
@@ -411,9 +421,13 @@ def dump_artists(cursor, artists):
                 VALUES (?)
             ''', (genre,))
             cursor.execute('''
+                SELECT id FROM Genre WHERE name = ?
+            ''', (genre,))
+            genre_id = cursor.fetchone()[0]
+            cursor.execute('''
                 INSERT OR IGNORE INTO ArtistGenre (artist_id, genre_id)
                 VALUES (?, ?)
-            ''', (artist_id, cursor.lastrowid))
+            ''', (artist_id, genre_id))
 
         # Insert into the Album table
         for album in albums:
