@@ -22,11 +22,16 @@ ctx.verify_mode = ssl.CERT_NONE
 
 # Global deque to store the timestamps of the requests
 request_timestamps = deque()
+total_requests = 0
 
 def add_request_count():
     """
     Add the current timestamp to the deque, remove timestamps older than 30 seconds.
     """
+    global total_requests
+    total_requests += 1
+
+    global request_timestamps
     current_time = time.time()
     request_timestamps.append(current_time)
     # Remove timestamps older than 30 seconds
@@ -43,6 +48,7 @@ def check_rate_limit():
         wait_time = 30 - (current_time - oldest_request_time)
         if wait_time > 0:
             print(f"Rate limited. Waiting {1 + wait_time:.2f} seconds...")
+            print(f"Total requests: {total_requests}")
             time.sleep(wait_time + 1)
         request_timestamps.popleft()
 
