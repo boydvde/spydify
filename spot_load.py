@@ -29,7 +29,8 @@ MAX_REQUESTS_PER_DAY = 30000 # Max requests per day
 halfmin_timestamps = deque()
 hourly_timestamps = deque()
 daily_timestamps = deque()
-
+response_times = deque(maxlen=10)
+base_wait = 0.1 # Base wait time in seconds
 total_requests = 0
 
 def check_rate_limit():
@@ -38,8 +39,12 @@ def check_rate_limit():
     If limits are exceeded, it waits before making the next request.
     """
     global total_requests, halfmin_timestamps, hourly_timestamps, daily_timestamps
+    global response_times, base_wait
 
     current_time = time.time()
+
+    if DEBUG: print(f"Waiting {base_wait:.2f} seconds before next request...")
+    time.sleep(base_wait) # Wait before making the request
 
     # 30-second rate limit
     if len(halfmin_timestamps) >= MAX_REQUESTS_PER_30_SEC:
@@ -58,6 +63,12 @@ def check_rate_limit():
         wait_time = 86400 - (current_time - daily_timestamps[0])
         print(f"Daily limit reached: Waiting {wait_time / 3600:.2f} hours...")
         time.sleep(wait_time + 1)
+
+    # Calculate the average response time and adjust the wait time
+    if len(response_times) > 5:
+        avg_response_time = sum(response_times) / len(response_times)
+        if avg_response_time > 2:base_wait = min(avg_response_time * 1.5, 10) # Increase dynamically up to 10 seconds
+        else: base_wait = max((base_wait * 0.9 + 0.1 * avg_response_time), 0.1) # Decrease dynamically down to 0.1 seconds
 
     # Add the current timestamp to the deque
     halfmin_timestamps.append(current_time)
@@ -94,8 +105,10 @@ def get_info(item_type, item_id, retries=3):
     req = urllib.request.Request(f'https://api.spotify.com/v1/{item_type}s/{item_id}', method="GET")
     req.add_header('Authorization', f'Bearer {get_token()}')
     check_rate_limit() # Check rate limit before making the request
+    start_time = time.time()
     try:
         with urllib.request.urlopen(req) as r:
+            response_times.append(time.time() - start_time)
             content = r.read().decode()
             return json.loads(content)
     except urllib.error.HTTPError as e:
@@ -126,8 +139,10 @@ def get_batch_info(item_type, item_ids, retries=3):
     req = urllib.request.Request(f'https://api.spotify.com/v1/{item_type}s?ids={ids}', method="GET")
     req.add_header('Authorization', f'Bearer {get_token()}')
     check_rate_limit() # Check rate limit before making the request
+    start_time = time.time()
     try:
         with urllib.request.urlopen(req) as r:
+            response_times.append(time.time() - start_time)
             content = r.read().decode()
             return json.loads(content)
     except urllib.error.HTTPError as e:
@@ -153,8 +168,10 @@ def get_user_saved(retries=3):
         req = urllib.request.Request(f'https://api.spotify.com/v1/me/tracks?limit={limit}&offset={offset}', method="GET")
         req.add_header('Authorization', f'Bearer {get_token()}')
         check_rate_limit() # Check rate limit before making the request
+        start_time = time.time()
         try:
             with urllib.request.urlopen(req) as r:
+                response_times.append(time.time() - start_time)
                 content = r.read().decode()
                 js = json.loads(content)
                 total = js['total']
@@ -183,8 +200,10 @@ def get_artist_albums(artist_id, retries=3):
         req = urllib.request.Request(f'https://api.spotify.com/v1/artists/{artist_id}/albums?limit={limit}&offset={offset}', method="GET")
         req.add_header('Authorization', f'Bearer {get_token()}')
         check_rate_limit() # Check rate limit before making the request
+        start_time = time.time()
         try:
             with urllib.request.urlopen(req) as r:
+                response_times.append(time.time() - start_time)
                 content = r.read().decode()
                 js = json.loads(content)
                 total = js['total']
