@@ -1,4 +1,4 @@
-import os, ssl, json, time, datetime, sqlite3
+import os, ssl, json, time, sqlite3
 import urllib.request, urllib.error, urllib.parse
 from collections import deque
 from dotenv import load_dotenv
