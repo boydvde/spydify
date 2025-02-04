@@ -26,7 +26,7 @@ MAX_REQUESTS_PER_HOUR = 5000 # Max requests per hour
 MAX_REQUESTS_PER_DAY = 30000 # Max requests per day
 
 # Global deque to store the timestamps of the requests
-request_timestamps = deque()
+halfmin_timestamps = deque()
 hourly_timestamps = deque()
 daily_timestamps = deque()
 
@@ -37,13 +37,13 @@ def check_rate_limit():
     Ensures requests stay within Spotify's API limits (30-sec, hourly, daily).
     If limits are exceeded, it waits before making the next request.
     """
-    global total_requests, request_timestamps, hourly_timestamps, daily_timestamps
+    global total_requests, halfmin_timestamps, hourly_timestamps, daily_timestamps
 
     current_time = time.time()
 
     # 30-second rate limit
-    if len(request_timestamps) >= MAX_REQUESTS_PER_30_SEC:
-        wait_time = 30 - (current_time - request_timestamps[0])
+    if len(halfmin_timestamps) >= MAX_REQUESTS_PER_30_SEC:
+        wait_time = 30 - (current_time - halfmin_timestamps[0])
         print(f"Rate limited: Waiting {wait_time:.2f} seconds to avoid 30-sec limit...")
         time.sleep(wait_time + 1)
 
@@ -60,14 +60,14 @@ def check_rate_limit():
         time.sleep(wait_time + 1)
 
     # Add the current timestamp to the deque
-    request_timestamps.append(current_time)
+    halfmin_timestamps.append(current_time)
     hourly_timestamps.append(current_time)
     daily_timestamps.append(current_time)
     total_requests += 1
 
     # Remove old timestamps from the deque
-    while request_timestamps and current_time - request_timestamps[0] > 30:
-        request_timestamps.popleft()
+    while halfmin_timestamps and current_time - halfmin_timestamps[0] > 30:
+        halfmin_timestamps.popleft()
     while hourly_timestamps and current_time - hourly_timestamps[0] > 3600:
         hourly_timestamps.popleft()
     while daily_timestamps and current_time - daily_timestamps[0] > 86400:
