@@ -42,8 +42,8 @@ def check_rate_limit():
         oldest_request_time = request_timestamps[0]
         wait_time = 30 - (current_time - oldest_request_time)
         if wait_time > 0:
-            print(f"Rate limited. Waiting {wait_time:.2f} seconds...")
-            time.sleep(wait_time)
+            print(f"Rate limited. Waiting {1 + wait_time:.2f} seconds...")
+            time.sleep(wait_time + 1)
         request_timestamps.popleft()
 
 def get_info(item_type, item_id, retries=3):
