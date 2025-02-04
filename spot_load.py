@@ -33,23 +33,18 @@ def add_request_count():
     while request_timestamps and current_time - request_timestamps[0] > 30:
         request_timestamps.popleft()
 
-def get_request_count():
-    """
-    Returns:
-        int: The number of requests made in the last 30 seconds.
-    """
-    return len(request_timestamps)
-
 def check_rate_limit():
     """
     Check if the rate limit has been reached and wait if necessary.
     """
-    request_count = get_request_count()
-    if DEBUG:
-        print(f'Requests in the last 30 seconds: {request_count}')
-    if request_count >= 30:
-        print("Rate limited. Waiting 30 seconds...")
-        time.sleep(30)
+    while len(request_timestamps) >= 30:
+        current_time = time.time()
+        oldest_request_time = request_timestamps[0]
+        wait_time = 30 - (current_time - oldest_request_time)
+        if wait_time > 0:
+            print(f"Rate limited. Waiting {wait_time:.2f} seconds...")
+            time.sleep(wait_time)
+        request_timestamps.popleft()
 
 def get_info(item_type, item_id, retries=3):
     """
