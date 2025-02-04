@@ -89,14 +89,19 @@ def get_info(item_type, item_id, retries=3):
     Retrieve information from Spotify for a specific item type and ID.
 
     Args:
-        item_type (str): The type of item to retrieve. Must be one of 'tracks', 'albums', or 'artists'.
+        item_type (str): The type of item to retrieve. Must be one of 'track', 'album', 'artist', or 'playlist'.
         item_id (str): The unique identifier for the item.
+        retries (int, optional): The number of retry attempts in case of rate limiting. Defaults to 3.
 
     Returns:
-        dict: The information retrieved from Spotify for the specified item.
+        dict: The information retrieved from Spotify for the specified item if the request is successful.
+        None: If the request fails.
 
     Raises:
-        ValueError: If the item_type is not one of 'track', 'album', 'artist' or 'playlist'.
+        ValueError: If the item_type is not valid.
+        urllib.error.HTTPError: If an HTTP error occurs during the request.
+        json.JSONDecodeError: If there is an error decoding the JSON response.
+        Exception: For any other unexpected errors.
     """
     valid_types = ['track', 'album', 'artist', 'playlist']
     if item_type not in valid_types:
@@ -126,6 +131,22 @@ def get_info(item_type, item_id, retries=3):
     return None
 
 def get_batch_info(item_type, item_ids, retries=3):
+    """
+    Fetches batch information for a given item type and list of item IDs from the Spotify API.
+    Args:
+        item_type (str): The type of item to fetch. Must be one of 'track', 'album', or 'artist'.
+        item_ids (list): A list of item IDs to fetch information for.
+        retries (int, optional): The number of retry attempts in case of rate limiting. Defaults to 3.
+    Returns:
+        dict: A dictionary containing the batch information if the request is successful.
+        None: If the request fails or if the item_ids list is empty.
+    Raises:
+        ValueError: If the item_type is not valid or if the batch size exceeds the allowed limit.
+        urllib.error.HTTPError: If an HTTP error occurs during the request.
+        json.JSONDecodeError: If there is an error decoding the JSON response.
+        Exception: For any other unexpected errors.
+    """
+
     valid_types = ['track', 'album', 'artist']
     if item_type not in valid_types:
         raise ValueError(f"Invalid item_type. Expected one of {valid_types}")
@@ -160,6 +181,19 @@ def get_batch_info(item_type, item_ids, retries=3):
     return None
     
 def get_user_saved(retries=3):
+    """
+    Retrieves the user's saved tracks from Spotify.
+    This function makes a request to the Spotify API to fetch the user's saved tracks.
+    It handles pagination by iterating through the results using the `limit` and `offset` parameters.
+    If the request is rate-limited, it will retry up to the specified number of retries with exponential backoff.
+    Args:
+        retries (int): The number of times to retry the request in case of rate limiting. Default is 3.
+    Returns:
+        list: A list of saved track items retrieved from the Spotify API.
+    Raises:
+        urllib.error.HTTPError: If an HTTP error occurs that is not related to rate limiting.
+        Exception: For any other unexpected errors.
+    """
     limit = 50
     offset = 0
     total = limit + 1
@@ -192,6 +226,17 @@ def get_user_saved(retries=3):
     return items
 
 def get_artist_albums(artist_id, retries=3):
+    """
+    Fetches all albums for a given artist from the Spotify API.
+    Args:
+        artist_id (str): The Spotify ID of the artist.
+        retries (int, optional): The number of retries in case of rate limiting. Defaults to 3.
+    Returns:
+        list: A list of album items for the given artist.
+    Raises:
+        urllib.error.HTTPError: If an HTTP error occurs that is not related to rate limiting.
+        Exception: For any other unexpected errors.
+    """
     limit = 50
     offset = 0
     total = limit + 1
@@ -224,6 +269,19 @@ def get_artist_albums(artist_id, retries=3):
     return items
 
 def create_tables(cursor):
+    """
+    Creates the necessary tables for the music database if they do not already exist.
+    Tables created:
+    - Track: Stores information about tracks, connected to Artist by TrackArtist and to Album by album_id.
+    - Album: Stores information about albums, connected to Artist by AlbumArtist and to Track by album_id.
+    - Artist: Stores information about artists, connected to Track by TrackArtist, to Album by AlbumArtist, and to Genre by ArtistGenre.
+    - Genre: Stores information about genres, connected to Artist by ArtistGenre.
+    - TrackArtist: Connector table for the many-to-many relationship between tracks and artists.
+    - AlbumArtist: Connector table for the many-to-many relationship between albums and artists.
+    - ArtistGenre: Connector table for the many-to-many relationship between artists and genres.
+    Args:
+        cursor (sqlite3.Cursor): The database cursor used to execute SQL commands.
+    """
     # Track table: id, name, album_id, duration, popularity, explicit, track_number 
     #   connected to Artist by TrackArtist connector table
     #   connected to Album by album_id
@@ -310,15 +368,57 @@ def create_tables(cursor):
     ''')
 
 def delete_tables(cursor):
-    cursor.execute('DROP TABLE IF EXISTS Track')
-    cursor.execute('DROP TABLE IF EXISTS Album')
-    cursor.execute('DROP TABLE IF EXISTS Artist')
-    cursor.execute('DROP TABLE IF EXISTS Genre')
-    cursor.execute('DROP TABLE IF EXISTS TrackArtist')
-    cursor.execute('DROP TABLE IF EXISTS AlbumArtist')
-    cursor.execute('DROP TABLE IF EXISTS ArtistGenre')
+    """
+    Deletes the following tables from the music database:
+    - Track
+    - Album
+    - Artist
+    - Genre
+    - TrackArtist
+    - AlbumArtist
+    - ArtistGenre
+
+    Args:
+        cursor (sqlite3.Cursor): The database cursor used to execute SQL commands.
+    """
+    
+    cursor.executescript('''
+        DROP TABLE IF EXISTS Track;
+        DROP TABLE IF EXISTS Album;
+        DROP TABLE IF EXISTS Artist;
+        DROP TABLE IF EXISTS Genre;
+        DROP TABLE IF EXISTS TrackArtist;
+        DROP TABLE IF EXISTS AlbumArtist;
+        DROP TABLE IF EXISTS ArtistGenre;
+    ''')
 
 def dump_user_saved(cursor, saved_tracks):
+    """
+    Inserts user saved tracks into the database.
+    This function takes a database cursor and a list of saved tracks, and inserts
+    the track information into the Track, TrackArtist, Artist, and Album tables.
+    If a track or artist already exists in the database, it will be ignored or replaced.
+    Args:
+        cursor (sqlite3.Cursor): The database cursor to execute SQL commands.
+        saved_tracks (list): A list of dictionaries containing track information.
+    Each track dictionary should have the following structure:
+        {
+            'track': {
+                'id': str,
+                'name': str,
+                'artists': [
+                    {'id': str, ...},
+                    ...
+                ],
+                'album': {'id': str, ...},
+                'duration_ms': int,
+                'popularity': int,
+                'explicit': bool,
+                'track_number': int,
+                ...
+            }
+        }
+    """
     for track in saved_tracks:
         track_id = track['track']['id']
         track_name = track['track']['name']
@@ -356,6 +456,30 @@ def dump_user_saved(cursor, saved_tracks):
             ''', (album_id,))
 
 def dump_tracks(cursor, tracks):
+    """
+    Inserts track information into the database.
+    This function takes a database cursor and a list of tracks, and inserts
+    the track information into the Track, TrackArtist, Artist, and Album tables.
+    If a track or artist already exists in the database, it will be ignored or replaced.
+    Args:
+        cursor (sqlite3.Cursor): The database cursor to execute SQL commands.
+        tracks (list): A list of dictionaries containing track information.
+    Each track dictionary should have the following structure:
+        {
+            'id': str,
+            'name': str,
+            'artists': [
+                {'id': str, ...},
+                ...
+            ],
+            'album': {'id': str, ...},
+            'duration_ms': int,
+            'popularity': int,
+            'explicit': bool,
+            'track_number': int,
+            ...
+        }
+    """
     for track in tracks:
         track_id = track['id']
         track_name = track['name']     
@@ -393,6 +517,36 @@ def dump_tracks(cursor, tracks):
             ''', (album_id,))
 
 def dump_albums(cursor, albums):
+    """
+    Inserts album information into the database.
+    This function takes a database cursor and a list of albums, and inserts
+    the album information into the Album, AlbumArtist, Artist, and Track tables.
+    If an album, artist, or track already exists in the database, it will be ignored or replaced.
+    Args:
+        cursor (sqlite3.Cursor): The database cursor to execute SQL commands.
+        albums (list): A list of dictionaries containing album information.
+    Each album dictionary should have the following structure:
+        {
+            'id': str,
+            'name': str,
+            'artists': [
+                {'id': str, ...},
+                ...
+            ],
+            'release_date': str,
+            'total_tracks': int,
+            'label': str,
+            'album_type': str,
+            'popularity': int,
+            'tracks': {
+                'items': [
+                    {'id': str, ...},
+                    ...
+                ]
+            }
+        }
+    """
+
     for album in albums:
         album_id = album['id']
         album_name = album['name']
@@ -437,6 +591,24 @@ def dump_albums(cursor, albums):
             ''', (track_id,))
 
 def dump_artists(cursor, artists):
+    """
+    Inserts artist information into the database.
+    This function takes a database cursor and a list of artists, and inserts
+    the artist information into the Artist, ArtistGenre, Genre, and Album tables.
+    If an artist or genre already exists in the database, it will be ignored or replaced.
+    Args:
+        cursor (sqlite3.Cursor): The database cursor to execute SQL commands.
+        artists (list): A list of dictionaries containing artist information.
+    Each artist dictionary should have the following structure:
+        {
+            'id': str,
+            'name': str,
+            'popularity': int,
+            'followers': {'total': int},
+            'genres': [str, ...]
+        }
+    """
+    
     for artist in artists:
         artist_id = artist['id']
         artist_name = artist['name']
