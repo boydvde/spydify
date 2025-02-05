@@ -603,7 +603,6 @@ def dump_artists(cursor, artists):
             'name': str,
             'popularity': int,
             'followers': {'total': int},
-            'genres': [str, ...]
         }
     """
     
@@ -612,7 +611,6 @@ def dump_artists(cursor, artists):
         artist_name = artist['name']
         popularity = artist['popularity']
         followers = artist['followers']['total']
-        genres = artist['genres']
 
         print(f"Dumping artist: {artist_name}")
 
@@ -621,21 +619,6 @@ def dump_artists(cursor, artists):
             INSERT OR REPLACE INTO Artist (id, name, popularity, followers)
             VALUES (?, ?, ?, ?)
         ''', (artist_id, artist_name, popularity, followers))
-
-        # Insert into the ArtistGenre table and Genre table
-        for genre in genres:
-            cursor.execute('''
-                INSERT OR IGNORE INTO Genre (name)
-                VALUES (?)
-            ''', (genre,))
-            cursor.execute('''
-                SELECT id FROM Genre WHERE name = ?
-            ''', (genre,))
-            genre_id = cursor.fetchone()[0]
-            cursor.execute('''
-                INSERT OR IGNORE INTO ArtistGenre (artist_id, genre_id)
-                VALUES (?, ?)
-            ''', (artist_id, genre_id))
 
 def dump_artist_albums(cursor, artist_id):
     """
