@@ -647,7 +647,7 @@ def dump_artists(cursor, artists):
                 VALUES (?, ?)
             ''', (artist_id, genre_id))
 
-def dumb_albums_from_artist(cursor, artist_id):
+def dump_artist_albums(cursor, artist_id):
     """
     Inserts album information for a given artist into the database.
     This function takes a database cursor and an artist ID, and inserts
@@ -796,7 +796,7 @@ if __name__ == "__main__":
 
                     if len(artist_ids) > 0:
                         for artist_id in artist_ids:
-                            dumb_albums_from_artist(cursor, artist_id)
+                            dump_artist_albums(cursor, artist_id)
                             cursor.execute('UPDATE Artist SET retrieved_albums = 1 WHERE id = ?', (artist_id,))
                     else: 
                         conn.commit()
