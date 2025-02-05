@@ -31,7 +31,7 @@ halfmin_timestamps = deque()
 hourly_timestamps = deque()
 daily_timestamps = deque()
 response_times = deque(maxlen=10)
-base_wait = 0.1 # Base wait time in seconds
+base_wait = 1 # Base wait time in seconds
 total_requests = 0
 
 def load_request_log():
@@ -98,7 +98,7 @@ def check_rate_limit():
     # Calculate the average response time and adjust the wait time
     if len(response_times) > 5:
         avg_response_time = sum(response_times) / len(response_times)
-        base_wait = max(0.1, avg_response_time * 1.5)
+        base_wait = max(0.5, avg_response_time * 1.5)
         if DEBUG:
             print(f"Adjusted base wait time: {base_wait}")
 
