@@ -1,8 +1,7 @@
-import os, ssl, json, time, sqlite3
-import urllib.request, urllib.error, urllib.parse
+import os, ssl, json, time, sqlite3, requests
 from collections import deque
 from dotenv import load_dotenv
-from spot_access import get_user_token, get_server_token, login
+from spot_access import get_user_token, login
 
 # Load the environment variables
 load_dotenv()
@@ -11,6 +10,7 @@ CLIENT_SECRET = os.getenv('CLIENT_SECRET')
 REDIRECT_URI = os.getenv('REDIRECT_URI')
 ACCESS_TOKEN_PATH = os.getenv('ACCESS_TOKEN_PATH')
 REFRESH_TOKEN_PATH = os.getenv('REFRESH_TOKEN_PATH')
+REQUEST_LOG_PATH = os.getenv('REQUEST_LOG_PATH')
 DEBUG = os.getenv('DEBUG', 'False').lower() in ('1', 'true', 'yes')
 
 print("Debug mode:", DEBUG)
@@ -21,7 +21,6 @@ ctx.check_hostname = False
 ctx.verify_mode = ssl.CERT_NONE
 
 # Rate limiting
-REQUEST_LOG_PATH = os.getenv('REQUEST_LOG_PATH')
 MAX_REQUESTS_PER_30_SEC = 50 # Max requests per 30 seconds
 MAX_REQUESTS_PER_HOUR = 4000 # Max requests per hour
 MAX_REQUESTS_PER_DAY = 30000 # Max requests per day
@@ -60,8 +59,8 @@ def save_request_log():
 
 def check_rate_limit():
     """
-    Ensures requests stay within Spotify's API limits (30-sec, hourly, daily).
-    If limits are exceeded, it waits before making the next request.
+    Ensures requests stay within Spotify’s API limits (30-sec, hourly, daily).
+    If limits are exceeded, the function waits before making the next request.
     """
     global total_requests, halfmin_timestamps, hourly_timestamps, daily_timestamps
     global response_times, base_wait
@@ -75,40 +74,29 @@ def check_rate_limit():
         print(f"Requests in last day: {len(daily_timestamps)}")
         print(f"Waiting {base_wait:.2f} seconds before next request...")
 
-    time.sleep(base_wait) # Wait before making the request
+    time.sleep(base_wait)  # Base wait time before making requests
 
-    # 30-second rate limit
     if len(halfmin_timestamps) >= MAX_REQUESTS_PER_30_SEC:
         wait_time = 30 - (current_time - halfmin_timestamps[0])
         print(f"Rate limited: Waiting {wait_time:.2f} seconds to avoid 30-sec limit...")
         time.sleep(wait_time + 1)
 
-    # Hourly rate limit
     if len(hourly_timestamps) >= MAX_REQUESTS_PER_HOUR:
         wait_time = 3600 - (current_time - hourly_timestamps[0])
         print(f"Hourly limit reached: Waiting {wait_time / 60:.2f} minutes...")
         time.sleep(wait_time + 1)
 
-    # Daily rate limit
     if len(daily_timestamps) >= MAX_REQUESTS_PER_DAY:
         wait_time = 86400 - (current_time - daily_timestamps[0])
         print(f"Daily limit reached: Waiting {wait_time / 3600:.2f} hours...")
         time.sleep(wait_time + 1)
 
-    # Calculate the average response time and adjust the wait time
-    if len(response_times) > 5:
-        avg_response_time = sum(response_times) / len(response_times)
-        base_wait = max(0.1, avg_response_time * 1.5)
-        if DEBUG:
-            print(f"Adjusted base wait time: {base_wait}")
-
-    # Add the current timestamp to the deque
     halfmin_timestamps.append(current_time)
     hourly_timestamps.append(current_time)
     daily_timestamps.append(current_time)
     total_requests += 1
 
-    # Remove old timestamps from the deque
+    # Clean old timestamps
     while halfmin_timestamps and current_time - halfmin_timestamps[0] > 30:
         halfmin_timestamps.popleft()
     while hourly_timestamps and current_time - hourly_timestamps[0] > 3600:
@@ -118,190 +106,179 @@ def check_rate_limit():
 
 def get_info(item_type, item_id, retries=3):
     """
-    Retrieve information from Spotify for a specific item type and ID.
+    Fetches information from the Spotify API for a given item type and ID.
 
     Args:
-        item_type (str): The type of item to retrieve. Must be one of 'track', 'album', 'artist', or 'playlist'.
-        item_id (str): The unique identifier for the item.
-        retries (int, optional): The number of retry attempts in case of rate limiting. Defaults to 3.
+        item_type (str): 'track', 'album', 'artist', or 'playlist'.
+        item_id (str): The ID of the item.
+        retries (int): Number of retries for rate-limited requests.
 
     Returns:
-        dict: The information retrieved from Spotify for the specified item if the request is successful.
-        None: If the request fails.
-
-    Raises:
-        ValueError: If the item_type is not valid.
-        urllib.error.HTTPError: If an HTTP error occurs during the request.
-        json.JSONDecodeError: If there is an error decoding the JSON response.
-        Exception: For any other unexpected errors.
+        dict: JSON response with item information, or None if request fails.
     """
     valid_types = ['track', 'album', 'artist', 'playlist']
     if item_type not in valid_types:
         raise ValueError(f"Invalid item_type. Expected one of {valid_types}")
 
-    req = urllib.request.Request(f'https://api.spotify.com/v1/{item_type}s/{item_id}', method="GET")
-    req.add_header('Authorization', f'Bearer {get_server_token()}')
-    check_rate_limit() # Check rate limit before making the request
-    start_time = time.time()
-    try:
-        with urllib.request.urlopen(req) as r:
-            response_times.append(time.time() - start_time)
-            content = r.read().decode()
-            return json.loads(content)
-    except urllib.error.HTTPError as e:
-        if e.code == 429 and retries > 0:
-            retry_after = int(e.headers.get('Retry-After', 1))
-            wait_time = retry_after * (2 ** (3 - retries))
-            print(f"Rate limited. Retrying after {wait_time} seconds...")
-            time.sleep(wait_time)
-            return get_info(item_type, item_id, retries - 1)
-        print(f"HTTPError: {e.code} - {e.reason}")
-    except json.JSONDecodeError as e:
-        print(f"JSONDecodeError: {e.msg}")
-    except Exception as e:
-        print(f"Unexpected error: {e}")
+    url = f'https://api.spotify.com/v1/{item_type}s/{item_id}'
+    headers = {'Authorization': f'Bearer {get_user_token()}'}
+
+    for attempt in range(retries):
+        check_rate_limit()
+        try:
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.HTTPError as e:
+            if response.status_code == 429 and attempt < retries - 1:
+                retry_after = int(response.headers.get("Retry-After", 1))
+                print(f"Rate limited. Retrying in {retry_after} seconds...")
+                time.sleep(retry_after)
+            else:
+                print(f"HTTP Error: {e}")
+        except requests.exceptions.RequestException as e:
+            print(f"Request error: {e}")
+        time.sleep(2 ** attempt)  # Exponential backoff
     return None
 
 def get_batch_info(item_type, item_ids, retries=3):
     """
     Fetches batch information for a given item type and list of item IDs from the Spotify API.
-    Args:
-        item_type (str): The type of item to fetch. Must be one of 'track', 'album', or 'artist'.
-        item_ids (list): A list of item IDs to fetch information for.
-        retries (int, optional): The number of retry attempts in case of rate limiting. Defaults to 3.
-    Returns:
-        dict: A dictionary containing the batch information if the request is successful.
-        None: If the request fails or if the item_ids list is empty.
-    Raises:
-        ValueError: If the item_type is not valid or if the batch size exceeds the allowed limit.
-        urllib.error.HTTPError: If an HTTP error occurs during the request.
-        json.JSONDecodeError: If there is an error decoding the JSON response.
-        Exception: For any other unexpected errors.
-    """
 
+    Args:
+        item_type (str): 'track', 'album', or 'artist'.
+        item_ids (list): List of Spotify item IDs.
+        retries (int): Number of retries for rate-limited requests.
+
+    Returns:
+        dict: JSON response with batch information, or None if request fails.
+    """
     valid_types = ['track', 'album', 'artist']
     if item_type not in valid_types:
         raise ValueError(f"Invalid item_type. Expected one of {valid_types}")
-    
-    if len(item_ids) == 0: return None
-    elif item_type == 'track' and len(item_ids) > 50: raise ValueError("Max batch size of tracks is 50")
-    elif item_type == 'artist' and len(item_ids) > 50: raise ValueError("Max batch size of artists is 50")
-    elif item_type == 'album' and len(item_ids) > 20: raise ValueError("Max batch size of albums is 20")
-    
-    ids = ','.join(item_ids)
-    req = urllib.request.Request(f'https://api.spotify.com/v1/{item_type}s?ids={ids}', method="GET")
-    req.add_header('Authorization', f'Bearer {get_server_token()}')
-    check_rate_limit() # Check rate limit before making the request
-    start_time = time.time()
-    try:
-        with urllib.request.urlopen(req) as r:
-            response_times.append(time.time() - start_time)
-            content = r.read().decode()
-            return json.loads(content)
-    except urllib.error.HTTPError as e:
-        if e.code == 429 and retries > 0:
-            retry_after = int(e.headers.get('Retry-After', 1))
-            wait_time = retry_after * (2 ** (3 - retries))
-            print(f"Rate limited. Retrying after {wait_time} seconds...")
-            time.sleep(wait_time)
-            return get_batch_info(item_type, item_ids, retries - 1)
-        print(f"HTTPError: {e.code} - {e.reason}")
-    except json.JSONDecodeError as e:
-        print(f"JSONDecodeError: {e.msg}")
-    except Exception as e:
-        print(f"Unexpected error: {e}")
+
+    if not item_ids:
+        return None
+
+    max_sizes = {'track': 50, 'artist': 50, 'album': 20}
+    if len(item_ids) > max_sizes[item_type]:
+        raise ValueError(f"Max batch size for {item_type}s is {max_sizes[item_type]}")
+
+    url = f'https://api.spotify.com/v1/{item_type}s?ids={",".join(item_ids)}'
+    headers = {'Authorization': f'Bearer {get_user_token()}'}
+
+    for attempt in range(retries):
+        check_rate_limit()
+        try:
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.HTTPError as e:
+            if response.status_code == 429 and attempt < retries - 1:
+                retry_after = int(response.headers.get("Retry-After", 1))
+                print(f"Rate limited. Retrying in {retry_after} seconds...")
+                time.sleep(retry_after)
+            else:
+                print(f"HTTP Error: {e}")
+        except requests.exceptions.RequestException as e:
+            print(f"Request error: {e}")
+        time.sleep(2 ** attempt)
     return None
-    
+
 def get_user_saved(retries=3):
     """
     Retrieves the user's saved tracks from Spotify.
-    This function makes a request to the Spotify API to fetch the user's saved tracks.
-    It handles pagination by iterating through the results using the `limit` and `offset` parameters.
-    If the request is rate-limited, it will retry up to the specified number of retries with exponential backoff.
-    Args:
-        retries (int): The number of times to retry the request in case of rate limiting. Default is 3.
+
     Returns:
-        list: A list of saved track items retrieved from the Spotify API.
-    Raises:
-        urllib.error.HTTPError: If an HTTP error occurs that is not related to rate limiting.
-        Exception: For any other unexpected errors.
+        list: List of saved track items from the Spotify API.
     """
     limit = 50
     offset = 0
     total = limit + 1
     items = []
+
     while offset < total:
-        req = urllib.request.Request(f'https://api.spotify.com/v1/me/tracks?limit={limit}&offset={offset}', method="GET")
-        req.add_header('Authorization', f'Bearer {get_user_token()}')
-        check_rate_limit() # Check rate limit before making the request
-        start_time = time.time()
-        try:
-            with urllib.request.urlopen(req) as r:
-                response_times.append(time.time() - start_time)
-                content = r.read().decode()
-                js = json.loads(content)
-                total = js['total']
-                items.extend(js['items'])
+        url = f'https://api.spotify.com/v1/me/tracks?limit={limit}&offset={offset}'
+        headers = {'Authorization': f'Bearer {get_user_token()}'}
+        check_rate_limit()
+        
+        for attempt in range(retries):
+            try:
+                response = requests.get(url, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+                total = data['total']
+                items.extend(data['items'])
                 offset += limit
-        except urllib.error.HTTPError as e:
-            if e.code == 429 and retries > 0:
-                retry_after = int(e.headers.get('Retry-After', 1))
-                wait_time = retry_after * (2 ** (3 - retries))
-                print(f"Rate limited. Retrying after {wait_time} seconds...")
-                time.sleep(wait_time)
-                return get_user_saved(retries - 1)
-            print(f"HTTPError: {e.code} {e.reason}")
-            break
-        except Exception as e:
-            print(f"Unexpected error: {e}")
-            break
+                break
+            except requests.exceptions.HTTPError as e:
+                if response.status_code == 429 and attempt < retries - 1:
+                    retry_after = int(response.headers.get("Retry-After", 1))
+                    print(f"Rate limited. Retrying in {retry_after} seconds...")
+                    time.sleep(retry_after)
+                else:
+                    print(f"HTTP Error: {e}")
+                    return items
+            except requests.exceptions.RequestException as e:
+                print(f"Request error: {e}")
+        time.sleep(2 ** attempt)
+
     return items
 
 def get_artist_albums(artist_id, retries=3):
     """
     Fetches all albums for a given artist from the Spotify API.
+
     Args:
         artist_id (str): The Spotify ID of the artist.
-        retries (int, optional): The number of retries in case of rate limiting. Defaults to 3.
+        retries (int, optional): Number of retries in case of rate limiting. Defaults to 3.
+
     Returns:
         list: A list of album items for the given artist.
-    Raises:
-        urllib.error.HTTPError: If an HTTP error occurs that is not related to rate limiting.
-        Exception: For any other unexpected errors.
     """
     limit = 50
     offset = 0
     total = limit + 1
     items = []
+    
     while offset < total:
-        url = f'https://api.spotify.com/v1/artists/{artist_id}/albums?limit={limit}&offset={offset}&include_groups=album,single'
-        req = urllib.request.Request(url=url, method="GET")
-        req.add_header('Authorization', f'Bearer {get_server_token()}')
-        check_rate_limit() # Check rate limit before making the request
-        start_time = time.time()
-        try:
-            with urllib.request.urlopen(req) as r:
-                response_times.append(time.time() - start_time)
-                content = r.read().decode()
-                js = json.loads(content)
-                total = js['total']
-                items.extend(js['items'])
-                offset += limit
-        except urllib.error.HTTPError as e:
-            if e.code == 429 and retries > 0:
-                retry_after = int(e.headers.get('Retry-After', 1))
-                wait_time = retry_after * (2 ** (3 - retries))
-                print(f"Rate limited. Retrying after {wait_time} seconds...")
-                time.sleep(wait_time)
-                return get_artist_albums(artist_id, retries - 1)
-            print(f"HTTPError: {e.code} {e.reason}")
-            break
-        except Exception as e:
-            print(f"Unexpected error: {e}")
-            break
+        url = f'https://api.spotify.com/v1/artists/{artist_id}/albums'
+        params = {
+            'limit': limit,
+            'offset': offset,
+            'include_groups': 'album,single'
+        }
+        headers = {'Authorization': f'Bearer {get_user_token()}'}
+        
+        check_rate_limit()
+        
+        for attempt in range(retries):
+            try:
+                response = requests.get(url, headers=headers, params=params)
+                response.raise_for_status()
+                data = response.json()
+
+                total = data.get('total', 0)  # Total number of albums
+                items.extend(data.get('items', []))  # Add fetched albums to list
+                offset += limit  # Increase offset for next batch
+                break  # Exit retry loop on success
+
+            except requests.exceptions.HTTPError as e:
+                if response.status_code == 429 and attempt < retries - 1:
+                    retry_after = int(response.headers.get("Retry-After", 1))
+                    print(f"Rate limited. Retrying in {retry_after} seconds...")
+                    time.sleep(retry_after)
+                else:
+                    print(f"HTTP Error: {e}")
+                    return items
+            except requests.exceptions.RequestException as e:
+                print(f"Request error: {e}")
+                time.sleep(2 ** attempt)  # Exponential backoff
+
     return items
 
-def create_tables(cursor):
+
+def create_tables(cursor): # Deprecated (SQL schema changed)
     """
     Creates the necessary tables for the music database if they do not already exist.
     Tables created:
@@ -692,31 +669,31 @@ def dump_artist_albums(cursor, artist_id):
             VALUES (?) 
         ''', (album_id,))
 
+# Database loader flow
+# 1. Setup 
+#   a. Create tables 
+#   b. Get user saved tracks info
+#   c. Initial dump of user saved tracks into database
+# 2. Loop
+#   a. Scan database for tracks ids with no info and add to batch
+#   b. Batch request track info, add to database
+#   c. Repeat until all tracks are updated
+#   
+#   a. Scan database for albums ids with no info and add to batch
+#   b. Batch request album info, add to database
+#   c. Repeat until all albums are updated 
+#   
+#   a. Scan database for artists ids with no info and add to batch
+#   b. Batch request artist info, add to database (also get artist's albums) SLOW!!!
+#   c. Repeat until all artists are updated
+# 3. Repeat until all queses are empty
+
 if __name__ == "__main__":
     # Check if logged in, else login
-    if not os.path.exists(REFRESH_TOKEN_PATH) or get_user_token() is None: login()
+    if not get_user_token(): login()
 
     # Load the request log
     load_request_log()
-
-    # Database loader flow
-    # 1. Setup 
-    #   a. Create tables 
-    #   b. Get user saved tracks info
-    #   c. Initial dump of user saved tracks into database
-    # 2. Loop
-    #   a. Scan database for tracks ids with no info and add to batch
-    #   b. Batch request track info, add to database
-    #   c. Repeat until all tracks are updated
-    #   
-    #   a. Scan database for albums ids with no info and add to batch
-    #   b. Batch request album info, add to database
-    #   c. Repeat until all albums are updated 
-    #   
-    #   a. Scan database for artists ids with no info and add to batch
-    #   b. Batch request artist info, add to database (also get artist's albums) SLOW!!!
-    #   c. Repeat until all artists are updated
-    # 3. Repeat until all queses are empty
 
     # Connect to the SQLite database
     os.makedirs("db", exist_ok=True)
@@ -736,8 +713,6 @@ if __name__ == "__main__":
         conn.commit()
 
     # Loop until all queues are empty
-    # Priority: Tracks -> Albums -> Artists
-    # Start at:
     check_type = input("Start at (tracks, albums, artists): ")
     check_albums = input("Check albums? (y/n): ") in ('y', 'yes')
     try:
