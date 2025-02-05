@@ -48,7 +48,7 @@ def save_request_log():
 
 def check_rate_limit():
     """
-    Ensures requests stay within Spotify’s API limits (30-sec, hourly, daily).
+    Ensures requests stay within Spotifys API limits (30-sec, hourly, daily).
     If limits are exceeded, the function waits before making the next request.
     """
     global total_requests, halfmin_timestamps, hourly_timestamps, daily_timestamps
@@ -680,7 +680,7 @@ def dump_artist_albums(cursor, artist_id):
 
 if __name__ == "__main__":
     # Check if logged in, else login
-    if not get_user_token(): login()
+    if not get_user_token(): login(scope=['user-library-read'])
 
     # Load the request log
     load_request_log()
@@ -772,8 +772,8 @@ if __name__ == "__main__":
                     print("No artists to update, moving on...")
                     check_type = 'tracks'
                     break
-                if i % 1 == 0: 
-                    conn.commit() # Commit every 1 batch (50 artists)
+                if i % 20 == 0: 
+                    conn.commit() # Commit every 20 batches (1000 artists)
                     cursor.execute('''SELECT COUNT(id) FROM Artist WHERE name IS NULL''')
                     artists_remaining = cursor.fetchone()[0]
                     print(f"Committing... Artists remaining: {artists_remaining}")
@@ -796,8 +796,12 @@ if __name__ == "__main__":
                         print("No artists's albums to update, moving on...")
                         check_type = 'tracks'
                         break
-                    if i % 1 == 0: 
-                        conn.commit()
+                    if i % 2 == 0: 
+                        conn.commit() # Commit every 2 batches (100 artists's albums)
+                        cursor.execute('''SELECT COUNT(id) FROM Artist WHERE retrieved_albums IS 0''')
+                        artists_remaining = cursor.fetchone()[0]
+                        print(f"Committing... Artists remaining: {artists_remaining}")
+                    i += 1
 
             # Check type defaults to tracks
             if check_type != 'tracks' and check_type != 'albums' and check_type != 'artists': check_type = 'tracks'
