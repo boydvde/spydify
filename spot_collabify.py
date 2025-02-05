@@ -45,7 +45,7 @@ for _, row in data_frame.iterrows():
     G.add_edge(row["artist_1"], row["artist_2"], weight=row["collaboration_count"])
 
 # Filter out low-weight edges
-G_filtered = nx.Graph((u, v, d) for u, v, d in G.edges(data=True) if d["weight"] > 1)
+G_filtered = nx.Graph((u, v, d) for u, v, d in G.edges(data=True) if d["weight"] > 3)
 
 # Calculate degree centrality
 degree_centrality = nx.degree_centrality(G_filtered)
