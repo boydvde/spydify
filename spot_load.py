@@ -747,7 +747,7 @@ if __name__ == "__main__":
             while True:
                 if check_type != 'tracks': break
                 # Scan database for tracks with no info
-                cursor.execute('SELECT id FROM Track WHERE name IS NULL LIMIT 50')
+                cursor.execute('SELECT id FROM Track WHERE name IS NULL ORDER BY RANDOM() LIMIT 50;')
                 track_ids = [row[0] for row in cursor.fetchall()]
 
                 # Batch request track info and add to database
@@ -771,7 +771,7 @@ if __name__ == "__main__":
             while True:
                 if check_type != 'albums': break
                 # Scan database for albums with no info
-                cursor.execute('SELECT id FROM Album WHERE name IS NULL LIMIT 20')
+                cursor.execute('SELECT id FROM Album WHERE name IS NULL ORDER BY RANDOM() LIMIT 50;')
                 album_ids = [row[0] for row in cursor.fetchall()]
 
                 # Batch request album info and add to database
@@ -795,7 +795,7 @@ if __name__ == "__main__":
             while True:
                 if check_type != 'artists': break
                 # Scan database for artists with no info
-                cursor.execute('SELECT id FROM Artist WHERE name IS NULL LIMIT 50')
+                cursor.execute('SELECT id FROM Artist WHERE name IS NULL ORDER BY RANDOM() LIMIT 50;')
                 artist_ids = [row[0] for row in cursor.fetchall()]
 
                 # Batch request artist info and add to database
