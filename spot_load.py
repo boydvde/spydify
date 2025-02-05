@@ -10,9 +10,9 @@ REQUEST_LOG_PATH = os.getenv('REQUEST_LOG_PATH')
 DEBUG = os.getenv('DEBUG', 'False').lower() in ('1', 'true', 'yes')
 
 # Rate limiting
-MAX_REQUESTS_PER_30_SEC = 50 # Max requests per 30 seconds
-MAX_REQUESTS_PER_HOUR = 4000 # Max requests per hour
-MAX_REQUESTS_PER_DAY = 30000 # Max requests per day
+MAX_REQUESTS_PER_30_SEC = 40 # Max requests per 30 seconds
+MAX_REQUESTS_PER_HOUR = 2500 # Max requests per hour
+MAX_REQUESTS_PER_DAY = 4500 # Max requests per day
 
 # Global variables to store the timestamps of the requests
 halfmin_timestamps = deque()
