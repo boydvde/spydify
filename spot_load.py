@@ -22,7 +22,7 @@ ctx.verify_mode = ssl.CERT_NONE
 
 # Rate limiting
 MAX_REQUESTS_PER_30_SEC = 50 # Max requests per 30 seconds
-MAX_REQUESTS_PER_HOUR = 5000 # Max requests per hour
+MAX_REQUESTS_PER_HOUR = 4000 # Max requests per hour
 MAX_REQUESTS_PER_DAY = 30000 # Max requests per day
 
 # Global deque to store the timestamps of the requests
@@ -598,7 +598,7 @@ def dump_albums(cursor, albums):
                 VALUES (?) 
             ''', (track_id,))
 
-def dump_artists(cursor, artists, check_albums=False):
+def dump_artists(cursor, artists):
     """
     Inserts artist information into the database.
     This function takes a database cursor and a list of artists, and inserts
@@ -623,7 +623,6 @@ def dump_artists(cursor, artists, check_albums=False):
         popularity = artist['popularity']
         followers = artist['followers']['total']
         genres = artist['genres']
-        albums = [] if not check_albums else get_artist_albums(artist_id)
 
         print(f"Dumping artist: {artist_name}")
 
@@ -648,13 +647,25 @@ def dump_artists(cursor, artists, check_albums=False):
                 VALUES (?, ?)
             ''', (artist_id, genre_id))
 
-        # Insert into the Album table
-        for album in albums:
-            album_id = album['id']
-            cursor.execute('''
-                INSERT OR IGNORE INTO Album (id)
-                VALUES (?) 
-            ''', (album_id,))
+def dumb_albums_from_artist(cursor, artist_id):
+    """
+    Inserts album information for a given artist into the database.
+    This function takes a database cursor and an artist ID, and inserts
+    the album information into the Album, AlbumArtist, Artist, and Track tables.
+    If an album, artist, or track already exists in the database, it will be ignored or replaced.
+    Args:
+        cursor (sqlite3.Cursor): The database cursor to execute SQL commands.
+        artist_id (str): The Spotify ID of the artist.
+    """
+    albums = get_artist_albums(artist_id)
+
+    # Insert into the Album table
+    for album in albums:
+        album_id = album['id']
+        cursor.execute('''
+            INSERT OR IGNORE INTO Album (id)
+            VALUES (?) 
+        ''', (album_id,))
 
 if __name__ == "__main__":
     # Check if logged in, else login
@@ -717,7 +728,7 @@ if __name__ == "__main__":
                     if track_batch is not None: dump_tracks(cursor, track_batch['tracks'])
                 else: 
                     conn.commit()
-                    print("No tracks to update, moving to albums")
+                    print("No tracks to update, moving on...")
                     check_type = 'albums'
                     break
                 if i % 20 == 0: 
@@ -741,7 +752,7 @@ if __name__ == "__main__":
                     if album_batch is not None: dump_albums(cursor, album_batch['albums'])
                 else:
                     conn.commit() 
-                    print("No albums to update, moving to artists")
+                    print("No albums to update, moving on...")
                     check_type = 'artists'
                     break
                 if i % 20 == 0: 
@@ -762,10 +773,10 @@ if __name__ == "__main__":
                 # Batch request artist info and add to database
                 if len(artist_ids) > 0:
                     artist_batch = get_batch_info('artist', artist_ids)
-                    if artist_batch is not None: dump_artists(cursor, artist_batch['artists'], check_albums)
+                    if artist_batch is not None: dump_artists(cursor, artist_batch['artists'])
                 else: 
                     conn.commit()
-                    print("No artists to update, starting over")
+                    print("No artists to update, moving on...")
                     check_type = 'tracks'
                     break
                 if i % 1 == 0: 
@@ -775,11 +786,38 @@ if __name__ == "__main__":
                     print(f"Committing... Artists remaining: {artists_remaining}")
                 i += 1
 
-            # Break if all queues are empty
-            if len(album_ids) == 0 and len(artist_ids) == 0 and len(track_ids) == 0:
-                print("All queues are empty, exiting...")
-                break
+            # Albums from Artists (resource intensive)
+            if check_albums:
+                i = 1
+                while True:
+                    # Scan database for artists whose albums have not been checked yet
+                    cursor.execute('SELECT id FROM Artist WHERE retrieved_albums IS 0 LIMIT 50')
+                    artist_ids = [row[0] for row in cursor.fetchall()]
 
+                    if len(artist_ids) > 0:
+                        for artist_id in artist_ids:
+                            dumb_albums_from_artist(cursor, artist_id)
+                            cursor.execute('UPDATE Artist SET retrieved_albums = 1 WHERE id = ?', (artist_id,))
+                    else: 
+                        conn.commit()
+                        print("No artists's albums to update, moving on...")
+                        check_type = 'tracks'
+                        break
+                    if i % 1 == 0: 
+                        conn.commit()
+                    
+            cursor.execute("SELECT COUNT(id) FROM Track WHERE name IS NULL")
+            if cursor.fetchone()[0] > 0: continue
+                
+            cursor.execute("SELECT COUNT(id) FROM Album WHERE name IS NULL")
+            if cursor.fetchone()[0] > 0: continue
+
+            cursor.execute("SELECT COUNT(id) FROM Artist WHERE name IS NULL OR retrieved_albums = 0")
+            if cursor.fetchone()[0] > 0: continue
+
+            print("All items updated.")
+            break
+        conn.commit()
     except KeyboardInterrupt:
         print("Exiting...")
     finally:
