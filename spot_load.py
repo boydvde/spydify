@@ -21,6 +21,7 @@ ctx.check_hostname = False
 ctx.verify_mode = ssl.CERT_NONE
 
 # Rate limiting
+REQUEST_LOG_PATH = os.getenv('REQUEST_LOG_PATH')
 MAX_REQUESTS_PER_30_SEC = 50 # Max requests per 30 seconds
 MAX_REQUESTS_PER_HOUR = 4000 # Max requests per hour
 MAX_REQUESTS_PER_DAY = 30000 # Max requests per day
@@ -32,6 +33,30 @@ daily_timestamps = deque()
 response_times = deque(maxlen=10)
 base_wait = 0.1 # Base wait time in seconds
 total_requests = 0
+
+def load_request_log():
+    try:
+        with open(REQUEST_LOG_PATH, 'r') as f:
+            logs = json.load(f)
+            global total_requests, halfmin_timestamps, hourly_timestamps, daily_timestamps
+            total_requests = logs['total_requests']
+            halfmin_timestamps = deque(logs['halfmin_timestamps'])
+            hourly_timestamps = deque(logs['hourly_timestamps'])
+            daily_timestamps = deque(logs['daily_timestamps'])
+    except FileNotFoundError:
+        print("Request log file not found. Starting fresh.")
+    except json.JSONDecodeError:
+        print("Error decoding request log file. Starting fresh.")
+
+def save_request_log():
+    logs = {
+        'total_requests': total_requests,
+        'halfmin_timestamps': list(halfmin_timestamps),
+        'hourly_timestamps': list(hourly_timestamps),
+        'daily_timestamps': list(daily_timestamps)
+    }
+    with open(REQUEST_LOG_PATH, 'w') as f:
+        json.dump(logs, f)
 
 def check_rate_limit():
     """
@@ -671,6 +696,9 @@ if __name__ == "__main__":
     # Check if logged in, else login
     if not os.path.exists(REFRESH_TOKEN_PATH) or get_user_token() is None: login()
 
+    # Load the request log
+    load_request_log()
+
     # Database loader flow
     # 1. Setup 
     #   a. Create tables 
@@ -824,3 +852,5 @@ if __name__ == "__main__":
         conn.commit()
         conn.close()
         print("Database connection closed.")
+        save_request_log()
+        print("Request log saved.")
