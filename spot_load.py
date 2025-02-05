@@ -2,7 +2,7 @@ import os, ssl, json, time, sqlite3
 import urllib.request, urllib.error, urllib.parse
 from collections import deque
 from dotenv import load_dotenv
-from spot_access import get_token, login
+from spot_access import get_user_token, get_server_token, login
 
 # Load the environment variables
 load_dotenv()
@@ -43,7 +43,13 @@ def check_rate_limit():
 
     current_time = time.time()
 
-    if DEBUG: print(f"Waiting {base_wait:.2f} seconds before next request...")
+    if DEBUG:
+        print(f"Total requests: {total_requests}")
+        print(f"Requests in last 30 seconds: {len(halfmin_timestamps)}")
+        print(f"Requests in last hour: {len(hourly_timestamps)}")
+        print(f"Requests in last day: {len(daily_timestamps)}")
+        print(f"Waiting {base_wait:.2f} seconds before next request...")
+
     time.sleep(base_wait) # Wait before making the request
 
     # 30-second rate limit
@@ -67,8 +73,9 @@ def check_rate_limit():
     # Calculate the average response time and adjust the wait time
     if len(response_times) > 5:
         avg_response_time = sum(response_times) / len(response_times)
-        if avg_response_time > 2:base_wait = min(avg_response_time * 1.5, 10) # Increase dynamically up to 10 seconds
-        else: base_wait = max((base_wait * 0.9 + 0.1 * avg_response_time), 0.1) # Decrease dynamically down to 0.1 seconds
+        base_wait = max(0.1, avg_response_time * 1.5)
+        if DEBUG:
+            print(f"Adjusted base wait time: {base_wait}")
 
     # Add the current timestamp to the deque
     halfmin_timestamps.append(current_time)
@@ -108,7 +115,7 @@ def get_info(item_type, item_id, retries=3):
         raise ValueError(f"Invalid item_type. Expected one of {valid_types}")
 
     req = urllib.request.Request(f'https://api.spotify.com/v1/{item_type}s/{item_id}', method="GET")
-    req.add_header('Authorization', f'Bearer {get_token()}')
+    req.add_header('Authorization', f'Bearer {get_server_token()}')
     check_rate_limit() # Check rate limit before making the request
     start_time = time.time()
     try:
@@ -158,7 +165,7 @@ def get_batch_info(item_type, item_ids, retries=3):
     
     ids = ','.join(item_ids)
     req = urllib.request.Request(f'https://api.spotify.com/v1/{item_type}s?ids={ids}', method="GET")
-    req.add_header('Authorization', f'Bearer {get_token()}')
+    req.add_header('Authorization', f'Bearer {get_server_token()}')
     check_rate_limit() # Check rate limit before making the request
     start_time = time.time()
     try:
@@ -200,7 +207,7 @@ def get_user_saved(retries=3):
     items = []
     while offset < total:
         req = urllib.request.Request(f'https://api.spotify.com/v1/me/tracks?limit={limit}&offset={offset}', method="GET")
-        req.add_header('Authorization', f'Bearer {get_token()}')
+        req.add_header('Authorization', f'Bearer {get_user_token()}')
         check_rate_limit() # Check rate limit before making the request
         start_time = time.time()
         try:
@@ -242,8 +249,9 @@ def get_artist_albums(artist_id, retries=3):
     total = limit + 1
     items = []
     while offset < total:
-        req = urllib.request.Request(f'https://api.spotify.com/v1/artists/{artist_id}/albums?limit={limit}&offset={offset}', method="GET")
-        req.add_header('Authorization', f'Bearer {get_token()}')
+        url = f'https://api.spotify.com/v1/artists/{artist_id}/albums?limit={limit}&offset={offset}&include_groups=album,single'
+        req = urllib.request.Request(url=url, method="GET")
+        req.add_header('Authorization', f'Bearer {get_server_token()}')
         check_rate_limit() # Check rate limit before making the request
         start_time = time.time()
         try:
@@ -590,7 +598,7 @@ def dump_albums(cursor, albums):
                 VALUES (?) 
             ''', (track_id,))
 
-def dump_artists(cursor, artists):
+def dump_artists(cursor, artists, check_albums=False):
     """
     Inserts artist information into the database.
     This function takes a database cursor and a list of artists, and inserts
@@ -615,7 +623,7 @@ def dump_artists(cursor, artists):
         popularity = artist['popularity']
         followers = artist['followers']['total']
         genres = artist['genres']
-        albums = get_artist_albums(artist_id)
+        albums = [] if not check_albums else get_artist_albums(artist_id)
 
         print(f"Dumping artist: {artist_name}")
 
@@ -650,7 +658,7 @@ def dump_artists(cursor, artists):
 
 if __name__ == "__main__":
     # Check if logged in, else login
-    if not os.path.exists(REFRESH_TOKEN_PATH) or get_token() is None: login()
+    if not os.path.exists(REFRESH_TOKEN_PATH) or get_user_token() is None: login()
 
     # Database loader flow
     # 1. Setup 
@@ -690,74 +698,91 @@ if __name__ == "__main__":
 
     # Loop until all queues are empty
     # Priority: Tracks -> Albums -> Artists
-    while True:
-        # Tracks
-        i = 1
+    # Start at:
+    check_type = input("Start at (tracks, albums, artists): ")
+    check_albums = input("Check albums? (y/n): ") in ('y', 'yes')
+    try:
         while True:
-            # Scan database for tracks with no info
-            cursor.execute('SELECT id FROM Track WHERE name IS NULL LIMIT 50')
-            track_ids = [row[0] for row in cursor.fetchall()]
+            # Tracks
+            i = 1
+            while True:
+                if check_type != 'tracks': break
+                # Scan database for tracks with no info
+                cursor.execute('SELECT id FROM Track WHERE name IS NULL LIMIT 50')
+                track_ids = [row[0] for row in cursor.fetchall()]
 
-            # Batch request track info and add to database
-            if len(track_ids) > 0:
-                track_batch = get_batch_info('track', track_ids)
-                if track_batch is not None: dump_tracks(cursor, track_batch['tracks'])
-            else: 
-                conn.commit()
-                print("No tracks to update, moving to albums")
+                # Batch request track info and add to database
+                if len(track_ids) > 0:
+                    track_batch = get_batch_info('track', track_ids)
+                    if track_batch is not None: dump_tracks(cursor, track_batch['tracks'])
+                else: 
+                    conn.commit()
+                    print("No tracks to update, moving to albums")
+                    check_type = 'albums'
+                    break
+                if i % 20 == 0: 
+                    conn.commit() # Commit every 20 batches (1000 tracks)
+                    cursor.execute('''SELECT COUNT(id) FROM Track WHERE name IS NULL''')
+                    tracks_remaining = cursor.fetchone()[0]
+                    print(f"Committing... Tracks remaining: {tracks_remaining}")
+                i += 1
+
+            # Albums
+            i = 1
+            while True:
+                if check_type != 'albums': break
+                # Scan database for albums with no info
+                cursor.execute('SELECT id FROM Album WHERE name IS NULL LIMIT 20')
+                album_ids = [row[0] for row in cursor.fetchall()]
+
+                # Batch request album info and add to database
+                if len(album_ids) > 0:
+                    album_batch = get_batch_info('album', album_ids)
+                    if album_batch is not None: dump_albums(cursor, album_batch['albums'])
+                else:
+                    conn.commit() 
+                    print("No albums to update, moving to artists")
+                    check_type = 'artists'
+                    break
+                if i % 20 == 0: 
+                    conn.commit() # Commit every 20 batches (400 albums)
+                    cursor.execute('''SELECT COUNT(id) FROM Album WHERE name IS NULL''')
+                    albums_remaining = cursor.fetchone()[0]
+                    print(f"Committing... Albums remaining: {albums_remaining}")
+                i += 1
+
+            # Artists
+            i = 1
+            while True:
+                if check_type != 'artists': break
+                # Scan database for artists with no info
+                cursor.execute('SELECT id FROM Artist WHERE name IS NULL LIMIT 50')
+                artist_ids = [row[0] for row in cursor.fetchall()]
+
+                # Batch request artist info and add to database
+                if len(artist_ids) > 0:
+                    artist_batch = get_batch_info('artist', artist_ids)
+                    if artist_batch is not None: dump_artists(cursor, artist_batch['artists'], check_albums)
+                else: 
+                    conn.commit()
+                    print("No artists to update, starting over")
+                    check_type = 'tracks'
+                    break
+                if i % 1 == 0: 
+                    conn.commit() # Commit every 1 batch (50 artists)
+                    cursor.execute('''SELECT COUNT(id) FROM Artist WHERE name IS NULL''')
+                    artists_remaining = cursor.fetchone()[0]
+                    print(f"Committing... Artists remaining: {artists_remaining}")
+                i += 1
+
+            # Break if all queues are empty
+            if len(album_ids) == 0 and len(artist_ids) == 0 and len(track_ids) == 0:
+                print("All queues are empty, exiting...")
                 break
-            if i % 20 == 0: 
-                conn.commit() # Commit every 20 batches (1000 tracks)
-                cursor.execute('''SELECT COUNT(id) FROM Track WHERE name IS NULL''')
-                tracks_remaining = cursor.fetchone()[0]
-                print(f"Committing... Tracks remaining: {tracks_remaining}")
-            i += 1
 
-        # Albums
-        i = 1
-        while True:
-            # Scan database for albums with no info
-            cursor.execute('SELECT id FROM Album WHERE name IS NULL LIMIT 20')
-            album_ids = [row[0] for row in cursor.fetchall()]
-
-            # Batch request album info and add to database
-            if len(album_ids) > 0:
-                album_batch = get_batch_info('album', album_ids)
-                if album_batch is not None: dump_albums(cursor, album_batch['albums'])
-            else:
-                conn.commit() 
-                print("No albums to update, moving to artists")
-                break
-            if i % 20 == 0: 
-                conn.commit() # Commit every 20 batches (400 albums)
-                cursor.execute('''SELECT COUNT(id) FROM Album WHERE name IS NULL''')
-                albums_remaining = cursor.fetchone()[0]
-                print(f"Committing... Albums remaining: {albums_remaining}")
-            i += 1
-
-        # Artists
-        i = 1
-        while True:
-            # Scan database for artists with no info
-            cursor.execute('SELECT id FROM Artist WHERE name IS NULL LIMIT 50')
-            artist_ids = [row[0] for row in cursor.fetchall()]
-
-            # Batch request artist info and add to database
-            if len(artist_ids) > 0:
-                artist_batch = get_batch_info('artist', artist_ids)
-                if artist_batch is not None: dump_artists(cursor, artist_batch['artists'])
-            else: 
-                conn.commit()
-                print("No artists to update, starting over")
-                break
-            if i % 2 == 0: 
-                conn.commit() # Commit every 2 batches (100 artists)
-                cursor.execute('''SELECT COUNT(id) FROM Artist WHERE name IS NULL''')
-                artists_remaining = cursor.fetchone()[0]
-                print(f"Committing... Artists remaining: {artists_remaining}")
-            i += 1
-
-        # Break if all queues are empty
-        if len(album_ids) == 0 and len(artist_ids) == 0 and len(track_ids) == 0:
-            print("All queues are empty, exiting...")
-            break
+    except KeyboardInterrupt:
+        print("Exiting...")
+    finally:
+        conn.commit()
+        conn.close()
+        print("Database connection closed.")
