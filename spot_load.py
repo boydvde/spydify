@@ -833,7 +833,10 @@ if __name__ == "__main__":
                         break
                     if i % 1 == 0: 
                         conn.commit()
-                    
+
+            # Check type defaults to tracks
+            if check_type != 'tracks' and check_type != 'albums' and check_type != 'artists': check_type = 'tracks'
+            
             cursor.execute("SELECT COUNT(id) FROM Track WHERE name IS NULL")
             if cursor.fetchone()[0] > 0: continue
                 
