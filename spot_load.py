@@ -5,27 +5,16 @@ from spot_access import get_user_token, login
 
 # Load the environment variables
 load_dotenv()
-CLIENT_ID = os.getenv('CLIENT_ID')
-CLIENT_SECRET = os.getenv('CLIENT_SECRET')
-REDIRECT_URI = os.getenv('REDIRECT_URI')
-ACCESS_TOKEN_PATH = os.getenv('ACCESS_TOKEN_PATH')
-REFRESH_TOKEN_PATH = os.getenv('REFRESH_TOKEN_PATH')
+
 REQUEST_LOG_PATH = os.getenv('REQUEST_LOG_PATH')
 DEBUG = os.getenv('DEBUG', 'False').lower() in ('1', 'true', 'yes')
-
-print("Debug mode:", DEBUG)
-
-# Create an SSL context to ignore certificate verification
-ctx = ssl.create_default_context()
-ctx.check_hostname = False
-ctx.verify_mode = ssl.CERT_NONE
 
 # Rate limiting
 MAX_REQUESTS_PER_30_SEC = 50 # Max requests per 30 seconds
 MAX_REQUESTS_PER_HOUR = 4000 # Max requests per hour
 MAX_REQUESTS_PER_DAY = 30000 # Max requests per day
 
-# Global deque to store the timestamps of the requests
+# Global variables to store the timestamps of the requests
 halfmin_timestamps = deque()
 hourly_timestamps = deque()
 daily_timestamps = deque()
@@ -67,7 +56,15 @@ def check_rate_limit():
 
     current_time = time.time()
 
-    if DEBUG:
+    # Clean old timestamps
+    while halfmin_timestamps and current_time - halfmin_timestamps[0] > 30:
+        halfmin_timestamps.popleft()
+    while hourly_timestamps and current_time - hourly_timestamps[0] > 3600:
+        hourly_timestamps.popleft()
+    while daily_timestamps and current_time - daily_timestamps[0] > 86400:
+        daily_timestamps.popleft()
+
+    if DEBUG and total_requests % 10 == 0:
         print(f"Total requests: {total_requests}")
         print(f"Requests in last 30 seconds: {len(halfmin_timestamps)}")
         print(f"Requests in last hour: {len(hourly_timestamps)}")
@@ -95,14 +92,6 @@ def check_rate_limit():
     hourly_timestamps.append(current_time)
     daily_timestamps.append(current_time)
     total_requests += 1
-
-    # Clean old timestamps
-    while halfmin_timestamps and current_time - halfmin_timestamps[0] > 30:
-        halfmin_timestamps.popleft()
-    while hourly_timestamps and current_time - hourly_timestamps[0] > 3600:
-        hourly_timestamps.popleft()
-    while daily_timestamps and current_time - daily_timestamps[0] > 86400:
-        daily_timestamps.popleft()
 
 def get_info(item_type, item_id, retries=3):
     """
@@ -276,7 +265,6 @@ def get_artist_albums(artist_id, retries=3):
                 time.sleep(2 ** attempt)  # Exponential backoff
 
     return items
-
 
 def create_tables(cursor): # Deprecated (SQL schema changed)
     """
@@ -661,6 +649,8 @@ def dump_artist_albums(cursor, artist_id):
     """
     albums = get_artist_albums(artist_id)
 
+    print(f"Dumping {len(albums)} albums for artist: {artist_id}")
+
     # Insert into the Album table
     for album in albums:
         album_id = album['id']
@@ -746,7 +736,7 @@ if __name__ == "__main__":
             while True:
                 if check_type != 'albums': break
                 # Scan database for albums with no info
-                cursor.execute('SELECT id FROM Album WHERE name IS NULL ORDER BY RANDOM() LIMIT 50;')
+                cursor.execute('SELECT id FROM Album WHERE name IS NULL ORDER BY RANDOM() LIMIT 20;')
                 album_ids = [row[0] for row in cursor.fetchall()]
 
                 # Batch request album info and add to database
@@ -829,6 +819,6 @@ if __name__ == "__main__":
     finally:
         conn.commit()
         conn.close()
-        print("Database connection closed.")
         save_request_log()
+        print("Database connection closed.")
         print("Request log saved.")
