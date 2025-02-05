@@ -17,6 +17,7 @@ class SpotifyAuthServer(BaseHTTPRequestHandler):
             
             if codes and codes[0]:
                 auth_code = codes[0] # Save the authorization code to memory
+                print("Authorization code received:", auth_code)
                 
                 # Send response 
                 self.send_response(200)
@@ -34,12 +35,22 @@ class SpotifyAuthServer(BaseHTTPRequestHandler):
                 self.wfile.write(html_content.encode())
         
         elif self.path == "/auth_code":
-            print(auth_code)
-            # Serve the auth_code
-            self.send_response(200)
-            self.send_header("Content-type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"auth_code": auth_code}).encode())
+            if auth_code:
+                # Serve the auth_code
+                self.send_response(200)
+                self.send_header("Content-type", "application/json")
+                self.end_headers()
+                response = json.dumps({"auth_code": auth_code})
+                print("Serving auth code:", response)
+                self.wfile.write(response.encode())
+            else:
+                # Serve an 404 error
+                self.send_response(404)
+                self.send_header("Content-type", "application/json")
+                self.end_headers()
+                error_data = json.dumps({"error": "Auth code not found"})
+                print(f"Auth code not found: {error_data}")
+                self.wfile.write(error_data.encode())
 
 if __name__ == "__main__":        
     webServer = HTTPServer((hostName, serverPort), SpotifyAuthServer)

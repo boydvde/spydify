@@ -9,6 +9,7 @@ CLIENT_SECRET = os.getenv('CLIENT_SECRET')
 REDIRECT_URI = os.getenv('REDIRECT_URI')
 ACCESS_TOKEN_PATH = os.getenv('ACCESS_TOKEN_PATH')
 REFRESH_TOKEN_PATH = os.getenv('REFRESH_TOKEN_PATH')
+SERVER_TOKEN_PATH = os.getenv('SERVER_TOKEN_PATH')
 DEBUG = os.getenv('DEBUG', 'False').lower() in ('1', 'true', 'yes')
 
 print("Debug mode:", DEBUG)
@@ -45,14 +46,25 @@ def fetch_auth_code():
         str: The authorization code received from the local server.
     """
     url = "http://localhost:3000/auth_code"
+    time.sleep(5) # Wait for the server to start
     while True:
         print("Fetching auth code...")
         try:
             with urllib.request.urlopen(url) as response:
                 print("Response received.")
                 data = json.loads(response.read().decode())
-                if data["auth_code"]:
+                print("Data:", data)
+                if "auth_code" in data:
+                    print("Auth code received:", data["auth_code"])
                     return data["auth_code"]
+        except urllib.error.URLError as e:
+            print(f"URLError: {e.reason}")
+        except urllib.error.HTTPError as e:
+            print(f"HTTPError: {e.code} - {e.reason}")
+        except json.JSONDecodeError as e:
+            print(f"JSONDecodeError: {e.msg}")
+        except KeyError as e:
+            print(f"KeyError: {e}")
         except Exception as e:
             print(f"Error fetching auth code: {e}")
         time.sleep(1)
@@ -104,7 +116,8 @@ def exchange_auth_code(code: str):
 
     return js # Return the JSON response for debugging
 
-def get_token():
+# Authorization Code flow
+def get_user_token():
     """
     Retrieve the access token, either from a file if it exists and is valid, or by refreshing it using the refresh token.
 
@@ -157,6 +170,47 @@ def get_token():
         print("Access token not found in the response")
         return None
 
+# Client Credentials flow
+def get_server_token():
+    """
+    Retrieve a server token using the Client Credentials flow.
+
+    Returns:
+        str: The server token if retrieval is successful.
+        None: If the token retrieval fails.
+    """
+
+    if os.path.exists(SERVER_TOKEN_PATH):
+        token_age = time.time() - os.path.getmtime(SERVER_TOKEN_PATH) # seconds
+        # print(f"Token age: {token_age} seconds.")
+        if token_age < 3540: # 59 minutes
+            with open(SERVER_TOKEN_PATH, "r") as access_token_file:
+                return access_token_file.readline().strip()
+
+    # Create a request to retrieve a server token
+    data = urllib.parse.urlencode({
+        'grant_type': 'client_credentials'
+    }).encode()
+    req = urllib.request.Request('https://accounts.spotify.com/api/token', data=data, method="POST")
+    req.add_header('Content-Type', 'application/x-www-form-urlencoded')
+    req.add_header('Authorization', 'Basic ' + base64.b64encode(f'{CLIENT_ID}:{CLIENT_SECRET}'.encode()).decode())
+
+    try:
+        # Retrieve the response
+        with urllib.request.urlopen(req) as r:
+            content = r.read().decode()
+            js = json.loads(content)
+    except urllib.error.HTTPError as e:
+        print(f"HTTPError: {e.code} {e.reason}")
+        return None
+
+    # Return the server token if it exists
+    if 'access_token' in js:
+        return js['access_token']
+    else:
+        print("Access token not found in the response")
+        return None
+
 def login():
     """
     Requests user authorization and exchanges the authorization code for access and refresh tokens.
@@ -170,5 +224,5 @@ def login():
 
 if __name__ == "__main__":
     # Check if logged in, else login
-    if not os.path.exists(REFRESH_TOKEN_PATH) or get_token() is None: login()
+    if not os.path.exists(REFRESH_TOKEN_PATH) or get_user_token() is None: login()
     else: print("Already logged in.")
