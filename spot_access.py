@@ -123,18 +123,18 @@ def get_user_token():
         print(f"Error refreshing token: {e}")
         return None
 
-def login():
+def login(scope=None):
     """
     Initiates the login process.
     """
-    user_auth(['user-library-read'])
+    user_auth(scope)
     print("Waiting for authorization...")
     auth_code = fetch_auth_code()
     exchange_auth_code(auth_code)
     print("Authorization successful.")
 
 if __name__ == "__main__":
-    if not os.path.exists(REFRESH_TOKEN_PATH) or get_user_token() is None:
-        login()
-    else:
-        print("Already logged in.")
+    if not get_user_token(): login()
+    else: print("Already logged in.")
+
+    print("Access token:", get_user_token())
