@@ -22,6 +22,55 @@ response_times = deque(maxlen=10)
 base_wait = 0.1 # Base wait time in seconds
 total_requests = 0
 
+def check_rate_limit():
+    # Load the global variables
+    global total_requests, halfmin_timestamps, hourly_timestamps, daily_timestamps, response_times, base_wait
+
+    # Current time in seconds
+    current_time = time.time()
+
+    # Clean old timestamps
+    while halfmin_timestamps and current_time - halfmin_timestamps[0] > 30: halfmin_timestamps.popleft()
+    while hourly_timestamps and current_time - hourly_timestamps[0] > 3600: hourly_timestamps.popleft()
+    while daily_timestamps and current_time - daily_timestamps[0] > 86400: daily_timestamps.popleft()
+
+    if DEBUG and total_requests % 10 == 0:
+        print(f"Total requests: {total_requests}")
+        print(f"Requests in last 30 seconds: {len(halfmin_timestamps)}")
+        print(f"Requests in last hour: {len(hourly_timestamps)}")
+        print(f"Requests in last day: {len(daily_timestamps)}")
+        print(f"Waiting {base_wait:.2f} seconds before next request...")
+
+    time.sleep(base_wait)  # Base wait time before making requests
+
+    if len(halfmin_timestamps) >= MAX_REQUESTS_PER_30_SEC:
+        wait_time = 30 - (current_time - halfmin_timestamps[0])
+        print(f"[{time.ctime(current_time)}] Rate limited: Waiting {wait_time:.2f} seconds to avoid 30-sec limit...")
+        time.sleep(wait_time + 1)
+
+    if len(hourly_timestamps) >= MAX_REQUESTS_PER_HOUR:
+        wait_time = 3600 - (current_time - hourly_timestamps[0])
+        if wait_time > 60:
+            print(f"[{time.ctime(current_time)}] Hourly limit reached: Retrying in {wait_time / 60:.2f} minutes...")
+        else:
+            print(f"[{time.ctime(current_time)}] Hourly limit reached: Retrying in {wait_time:.2f} seconds...")
+        time.sleep(wait_time + 1)
+
+    if len(daily_timestamps) >= MAX_REQUESTS_PER_DAY:
+        wait_time = 86400 - (current_time - daily_timestamps[0])
+        if wait_time > 3600:
+            print(f"[{time.ctime(current_time)}] Daily limit reached: Retrying in {wait_time / 3600:.2f} hours...")
+        elif wait_time > 60:
+            print(f"[{time.ctime(current_time)}] Daily limit reached: Retrying in {wait_time / 60:.2f} minutes...")
+        else:
+            print(f"[{time.ctime(current_time)}] Daily limit reached: Retrying in {wait_time:.2f} seconds...")
+        time.sleep(wait_time + 1)
+
+    halfmin_timestamps.append(current_time)
+    hourly_timestamps.append(current_time)
+    daily_timestamps.append(current_time)
+    total_requests += 1
+ 
 def load_request_log():
     try:
         with open(REQUEST_LOG_PATH, 'r') as f:
@@ -45,47 +94,6 @@ def save_request_log():
     }
     with open(REQUEST_LOG_PATH, 'w') as f:
         json.dump(logs, f)
-
-def check_rate_limit():
-    global total_requests, halfmin_timestamps, hourly_timestamps, daily_timestamps, response_times, base_wait
-    current_time = time.time()
-
-    # Clean old timestamps
-    while halfmin_timestamps and current_time - halfmin_timestamps[0] > 30:
-        halfmin_timestamps.popleft()
-    while hourly_timestamps and current_time - hourly_timestamps[0] > 3600:
-        hourly_timestamps.popleft()
-    while daily_timestamps and current_time - daily_timestamps[0] > 86400:
-        daily_timestamps.popleft()
-
-    if DEBUG and total_requests % 10 == 0:
-        print(f"Total requests: {total_requests}")
-        print(f"Requests in last 30 seconds: {len(halfmin_timestamps)}")
-        print(f"Requests in last hour: {len(hourly_timestamps)}")
-        print(f"Requests in last day: {len(daily_timestamps)}")
-        print(f"Waiting {base_wait:.2f} seconds before next request...")
-
-    time.sleep(base_wait)  # Base wait time before making requests
-
-    if len(halfmin_timestamps) >= MAX_REQUESTS_PER_30_SEC:
-        wait_time = 30 - (current_time - halfmin_timestamps[0])
-        print(f"[{time.ctime(current_time)}] Rate limited: Waiting {wait_time:.2f} seconds to avoid 30-sec limit...")
-        time.sleep(wait_time + 1)
-
-    if len(hourly_timestamps) >= MAX_REQUESTS_PER_HOUR:
-        wait_time = 3600 - (current_time - hourly_timestamps[0])
-        print(f"[{time.ctime(current_time)}] Hourly limit reached: Waiting {wait_time / 60:.2f} minutes...")
-        time.sleep(wait_time + 1)
-
-    if len(daily_timestamps) >= MAX_REQUESTS_PER_DAY:
-        wait_time = 86400 - (current_time - daily_timestamps[0])
-        print(f"[{time.ctime(current_time)}] Daily limit reached: Retrying in {wait_time / 3600:.2f} hours...")
-        time.sleep(wait_time + 1)
-
-    halfmin_timestamps.append(current_time)
-    hourly_timestamps.append(current_time)
-    daily_timestamps.append(current_time)
-    total_requests += 1
 
 def get_info(item_type, item_id, retries=3):
     """
@@ -115,7 +123,7 @@ def get_info(item_type, item_id, retries=3):
         except requests.exceptions.HTTPError as e:
             if response.status_code == 429 and attempt < retries - 1:
                 retry_after = int(response.headers.get("Retry-After", 1))
-                print(f"Rate limited. Retrying in {retry_after} seconds...")
+                print(f"HTTP 429: Rate limited. Retrying in {retry_after} seconds...")
                 time.sleep(retry_after)
             else:
                 print(f"HTTP Error: {e}")
@@ -159,7 +167,7 @@ def get_batch_info(item_type, item_ids, retries=3):
         except requests.exceptions.HTTPError as e:
             if response.status_code == 429 and attempt < retries - 1:
                 retry_after = int(response.headers.get("Retry-After", 1))
-                print(f"Rate limited. Retrying in {retry_after} seconds...")
+                print(f"HTTP 429: Rate limited. Retrying in {retry_after} seconds...")
                 time.sleep(retry_after)
             else:
                 print(f"HTTP Error: {e}")
@@ -171,18 +179,15 @@ def get_batch_info(item_type, item_ids, retries=3):
 def get_user_saved(retries=3):
     """
     Retrieves the user's saved tracks from Spotify.
-
+    
     Returns:
-        list: List of saved track items from the Spotify API.
+        list: A list of track dictionaries containing track information.
     """
-    limit = 50
-    offset = 0
-    total = limit + 1
-    items = []
+    url = 'https://api.spotify.com/v1/me/tracks?limit=50'
+    headers = {'Authorization': f'Bearer {get_user_token()}'}
+    tracks = []  # Stores track data
 
-    while offset < total:
-        url = f'https://api.spotify.com/v1/me/tracks?limit={limit}&offset={offset}'
-        headers = {'Authorization': f'Bearer {get_user_token()}'}
+    while url:  # Automatically follow pagination links
         check_rate_limit()
         
         for attempt in range(retries):
@@ -190,89 +195,199 @@ def get_user_saved(retries=3):
                 response = requests.get(url, headers=headers)
                 response.raise_for_status()
                 data = response.json()
-                total = data['total']
-                items.extend(data['items'])
-                offset += limit
-                break
+                
+                # Extract track info and format it correctly
+                for item in data['items']:
+                    track = item['track']  # Access nested track data
+                    tracks.append({
+                        'id': track['id'],
+                        'name': track['name'],
+                        'album': track['album'],
+                        'artists': track['artists'],
+                        'duration_ms': track['duration_ms'],
+                        'popularity': track['popularity'],
+                        'explicit': track['explicit'],
+                        'track_number': track['track_number'],
+                    })
+
+                # Update URL to next page, or None if there are no more pages
+                url = data.get('next')
+
+                break  # Break retry loop on success
+
             except requests.exceptions.HTTPError as e:
                 if response.status_code == 429 and attempt < retries - 1:
                     retry_after = int(response.headers.get("Retry-After", 1))
-                    print(f"Rate limited. Retrying in {retry_after} seconds...")
+                    print(f"HTTP 429: Rate limited. Retrying in {retry_after} seconds...")
                     time.sleep(retry_after)
                 else:
                     print(f"HTTP Error: {e}")
-                    return items
+                    return tracks  # Return whatever data was collected
             except requests.exceptions.RequestException as e:
                 print(f"Request error: {e}")
-        time.sleep(2 ** attempt)
+        
+        time.sleep(2 ** attempt)  # Exponential backoff
 
-    return items
+    return tracks
 
 def get_artist_albums(artist_id, retries=3):
     """
-    Fetches all albums for a given artist from the Spotify API.
+    Fetches all album IDs for a given artist from the Spotify API using automatic pagination.
+    Returns only album IDs in a format compatible with batch fetching.
 
     Args:
         artist_id (str): The Spotify ID of the artist.
         retries (int, optional): Number of retries in case of rate limiting. Defaults to 3.
 
     Returns:
-        list: A list of album items for the given artist.
+        list: A list of album IDs (to be fetched later in full detail).
     """
-    limit = 50
-    offset = 0
-    total = limit + 1
-    items = []
-    
-    while offset < total:
-        url = f'https://api.spotify.com/v1/artists/{artist_id}/albums'
-        params = {
-            'limit': limit,
-            'offset': offset,
-            'include_groups': 'album,single'
-        }
-        headers = {'Authorization': f'Bearer {get_user_token()}'}
-        
+    url = f'https://api.spotify.com/v1/artists/{artist_id}/albums?limit=50&include_groups=album,single'
+    headers = {'Authorization': f'Bearer {get_user_token()}'}
+    album_ids = []  # Stores only album IDs
+
+    while url:  # Automatically follow pagination links
         check_rate_limit()
         
         for attempt in range(retries):
             try:
-                response = requests.get(url, headers=headers, params=params)
+                response = requests.get(url, headers=headers)
                 response.raise_for_status()
                 data = response.json()
+                
+                # Store only album IDs
+                album_ids.extend(album['id'] for album in data['items'])
 
-                total = data.get('total', 0)  # Total number of albums
-                items.extend(data.get('items', []))  # Add fetched albums to list
-                offset += limit  # Increase offset for next batch
-                break  # Exit retry loop on success
+                # Update URL to next page, or None if there are no more pages
+                url = data.get('next')
+
+                break  # Break retry loop on success
 
             except requests.exceptions.HTTPError as e:
                 if response.status_code == 429 and attempt < retries - 1:
                     retry_after = int(response.headers.get("Retry-After", 1))
-                    print(f"Rate limited. Retrying in {retry_after} seconds...")
+                    print(f"HTTP 429: Rate limited. Retrying in {retry_after} seconds...")
                     time.sleep(retry_after)
                 else:
                     print(f"HTTP Error: {e}")
-                    return items
+                    return album_ids  # Return whatever data was collected
             except requests.exceptions.RequestException as e:
                 print(f"Request error: {e}")
-                time.sleep(2 ** attempt)  # Exponential backoff
 
-    return items
+        time.sleep(2 ** attempt)  # Exponential backoff
+
+    return album_ids
+
+def dump_tracks(conn, cursor, tracks):
+    """
+    Inserts track information into the database.
+    """
+
+    if DEBUG: print(f"Dumping {len(tracks)} tracks...")
+
+    with conn:
+        # Insert into the Track table
+        cursor.executemany('''
+            INSERT OR REPLACE INTO Track (id, name, album_id, duration, popularity, explicit, track_number)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', [(track['id'], track['name'], track['album']['id'], int(track['duration_ms']), int(track['popularity']), int(track['explicit']), int(track['track_number'])) for track in tracks])
+        
+        # Insert into the TrackArtist table
+        cursor.executemany('''
+            INSERT OR IGNORE INTO TrackArtist (track_id, artist_id)
+            VALUES (?, ?)
+        ''', [(track['id'], artist['id']) for track in tracks for artist in track['artists']])
+
+        # Insert into the Artist table
+        cursor.executemany('''
+            INSERT OR IGNORE INTO Artist (id)
+            VALUES (?)
+        ''', [(artist['id'],) for track in tracks for artist in track['artists']])
+
+        # Insert into Album table
+        cursor.executemany('''
+            INSERT OR IGNORE INTO Album (id) 
+            VALUES (?)
+        ''', [(track['album']['id'],) for track in tracks])
+
+def dump_albums(conn, cursor, albums):
+    """
+    Inserts album information into the database.
+    """
+
+    if DEBUG: print(f"Dumping {len(albums)} albums...")
+
+    with conn:
+        # Insert into the Album table
+        cursor.executemany('''
+            INSERT OR REPLACE INTO Album (id, name, release_date, total_tracks, label, album_type, popularity)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', [(album['id'], album['name'], album['release_date'], album['total_tracks'], album['label'], album['album_type'], album['popularity']) for album in albums])
+        
+        # Insert into the AlbumArtist table 
+        cursor.executemany('''
+            INSERT OR IGNORE INTO AlbumArtist (album_id, artist_id)
+            VALUES (?, ?)
+        ''', [(album['id'], artist['id']) for album in albums for artist in album['artists']])
+
+        # Insert into the Artist table
+        cursor.executemany('''
+            INSERT OR IGNORE INTO Artist (id)
+            VALUES (?)
+        ''', [(artist['id'],) for album in albums for artist in album['artists']])
+
+        # Insert into the Track table
+        cursor.executemany('''
+            INSERT OR IGNORE INTO Track (id)
+            VALUES (?)
+        ''', [(track['id'],) for album in albums for track in album['tracks']['items']])
+
+def dump_artists(conn, cursor, artists):
+    """
+    Inserts artist information into the database.
+    """
+
+    if DEBUG: print(f"Dumping {len(artists)} artists...")
+
+    with conn:
+        # Insert into the Artist table
+        cursor.executemany('''
+            INSERT OR REPLACE INTO Artist (id, name, popularity, followers)
+            VALUES (?, ?, ?, ?)
+        ''', [(artist['id'], artist['name'], artist['popularity'], artist['followers']['total']) for artist in artists])
+
+def dump_artist_albums(conn, cursor, artist_id):
+    """
+    Fetches full album details for an artist in batches and inserts them into the database.
+
+    Args:
+        conn (sqlite3.Connection): Database connection.
+        cursor (sqlite3.Cursor): Database cursor.
+        artist_id (str): The Spotify ID of the artist.
+    """
+    album_ids = get_artist_albums(artist_id)
+
+    if not album_ids:
+        if DEBUG: print(f"No albums found for artist: {artist_id}")
+        return
+
+    if DEBUG: print(f"Fetching {len(album_ids)} albums for artist: {artist_id} in batches...")
+
+    # Process album IDs in batches of 20 (Spotify's batch limit)
+    batch_size = 20
+    for i in range(0, len(album_ids), batch_size):
+        batch = album_ids[i:i + batch_size]  # Get the current batch
+
+        # Fetch full album details using batch API request
+        album_data = get_batch_info('album', batch)
+
+        if album_data and 'albums' in album_data:
+            if DEBUG: print(f"Dumping {len(album_data['albums'])} albums for artist: {artist_id}")
+            dump_albums(conn, cursor, album_data['albums'])
 
 def create_tables(cursor): # Deprecated (SQL schema changed)
     """
     Creates the necessary tables for the music database if they do not already exist.
-    Tables created:
-    - Track: Stores information about tracks, connected to Artist by TrackArtist and to Album by album_id.
-    - Album: Stores information about albums, connected to Artist by AlbumArtist and to Track by album_id.
-    - Artist: Stores information about artists, connected to Track by TrackArtist, to Album by AlbumArtist, and to Genre by ArtistGenre.
-    - Genre: Stores information about genres, connected to Artist by ArtistGenre.
-    - TrackArtist: Connector table for the many-to-many relationship between tracks and artists.
-    - AlbumArtist: Connector table for the many-to-many relationship between albums and artists.
-    - ArtistGenre: Connector table for the many-to-many relationship between artists and genres.
-    Args:
-        cursor (sqlite3.Cursor): The database cursor used to execute SQL commands.
     """
     # Track table: id, name, album_id, duration, popularity, explicit, track_number 
     #   connected to Artist by TrackArtist connector table
@@ -384,130 +499,6 @@ def delete_tables(cursor):
         DROP TABLE IF EXISTS ArtistGenre;
     ''')
 
-def dump_user_saved(conn, cursor, saved_tracks):
-    """
-    Inserts user saved tracks into the database.
-    """
-    
-    print(f"Dumping {len(saved_tracks)} saved tracks...")
-
-    with conn:
-        # Insert into the Track table
-        cursor.executemany('''
-            INSERT OR REPLACE INTO Track (id, name, album_id, duration, popularity, explicit, track_number)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', [(track['track']['id'], track['track']['name'], track['track']['album']['id'], int(track['track']['duration_ms']), int(track['track']['popularity']), int(track['track']['explicit']), int(track['track']['track_number']) ) for track in saved_tracks])
-
-        # Insert into the Artist table
-        cursor.executemany('''
-            INSERT OR IGNORE INTO Artist (id)
-            VALUES (?)
-        ''', [(artist['id'],) for track in saved_tracks for artist in track['track']['artists']])
-
-        # Insert into the TrackArtist
-        cursor.executemany('''
-            INSERT OR IGNORE INTO TrackArtist (track_id, artist_id)
-            VALUES (?, ?)
-        ''', [(track['track']['id'], artist['id']) for track in saved_tracks for artist in track['track']['artists']])
-        
-        # Insert into the Album table
-        cursor.executemany('''
-            INSERT OR IGNORE INTO Album (id)
-            VALUES (?)
-        ''', [(track['track']['album']['id'],) for track in saved_tracks]) 
-
-def dump_tracks(conn, cursor, tracks):
-    """
-    Inserts track information into the database.
-    """
-
-    print(f"Dumping {len(tracks)} tracks...")
-
-    with conn:
-        # Insert into the Track table
-        cursor.executemany('''
-            INSERT OR REPLACE INTO Track (id, name, album_id, duration, popularity, explicit, track_number)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', [(track['id'], track['name'], track['album']['id'], int(track['duration_ms']), int(track['popularity']), int(track['explicit']), int(track['track_number'])) for track in tracks])
-        
-        # Insert into the TrackArtist table
-        cursor.executemany('''
-            INSERT OR IGNORE INTO TrackArtist (track_id, artist_id)
-            VALUES (?, ?)
-        ''', [(track['id'], artist['id']) for track in tracks for artist in track['artists']])
-
-        # Insert into the Artist table
-        cursor.executemany('''
-            INSERT OR IGNORE INTO Artist (id)
-            VALUES (?)
-        ''', [(artist['id'],) for track in tracks for artist in track['artists']])
-
-        # Insert into Album table
-        cursor.executemany('''
-            INSERT OR IGNORE INTO Album (id) 
-            VALUES (?)
-        ''', [(track['album']['id'],) for track in tracks])
-
-def dump_albums(conn, cursor, albums):
-    """
-    Inserts album information into the database.
-    """
-
-    print(f"Dumping {len(albums)} albums...")
-
-    with conn:
-        # Insert into the Album table
-        cursor.executemany('''
-            INSERT OR REPLACE INTO Album (id, name, release_date, total_tracks, label, album_type, popularity)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', [(album['id'], album['name'], album['release_date'], album['total_tracks'], album['label'], album['album_type'], album['popularity']) for album in albums])
-        
-        # Insert into the AlbumArtist table 
-        cursor.executemany('''
-            INSERT OR IGNORE INTO AlbumArtist (album_id, artist_id)
-            VALUES (?, ?)
-        ''', [(album['id'], artist['id']) for album in albums for artist in album['artists']])
-
-        # Insert into the Artist table
-        cursor.executemany('''
-            INSERT OR IGNORE INTO Artist (id)
-            VALUES (?)
-        ''', [(artist['id'],) for album in albums for artist in album['artists']])
-
-        # Insert into the Track table
-        cursor.executemany('''
-            INSERT OR IGNORE INTO Track (id)
-            VALUES (?)
-        ''', [(track['id'],) for album in albums for track in album['tracks']['items']])
-
-def dump_artists(conn, cursor, artists):
-    """
-    Inserts artist information into the database.
-    """
-
-    print(f"Dumping {len(artists)} artists...")
-
-    with conn:
-        # Insert into the Artist table
-        cursor.executemany('''
-            INSERT OR REPLACE INTO Artist (id, name, popularity, followers)
-            VALUES (?, ?, ?, ?)
-        ''', [(artist['id'], artist['name'], artist['popularity'], artist['followers']['total']) for artist in artists])
-
-def dump_artist_albums(cursor, albums):
-    """
-    Inserts album information for a given artist into the database.
-    """
-
-    print(f"Dumping {len(albums)} albums for artist: {artist_id}")
-
-    with conn:
-        # Insert into the Album table
-        cursor.executemany('''
-            INSERT OR IGNORE INTO Album (id)
-            VALUES (?)
-        ''', [(album['id'],) for album in albums])
-
 # Database loader flow
 # 1. Setup 
 #   a. Create tables 
@@ -536,7 +527,8 @@ if __name__ == "__main__":
 
     # Connect to the SQLite database
     os.makedirs("db", exist_ok=True)
-    conn = sqlite3.connect("db/spotify.sqlite")
+    conn: sqlite3.Connection = sqlite3.connect("db/spotify.sqlite")
+
     conn.execute("PRAGMA journal_mode=WAL")  # Enable Write-Ahead Logging for better concurrency
     cursor = conn.cursor()
     
@@ -549,8 +541,7 @@ if __name__ == "__main__":
         
         # Initial dump: Get user saved tracks and add to the database
         saved_tracks = get_user_saved()
-        dump_user_saved(cursor, saved_tracks)
-        conn.commit()
+        dump_tracks(conn, cursor, saved_tracks)
 
     # Loop until all queues are empty
     check_type = input("Start at (tracks, albums, artists): ")
@@ -568,7 +559,7 @@ if __name__ == "__main__":
                 # Batch request track info and add to database
                 if len(track_ids) > 0:
                     track_batch = get_batch_info('track', track_ids)
-                    if track_batch is not None: dump_tracks(cursor, track_batch['tracks']); conn.commit()
+                    if track_batch is not None: dump_tracks(conn, cursor, track_batch['tracks'])
                 else: 
                     print("No tracks to update, moving on...")
                     check_type = 'albums'
@@ -590,7 +581,7 @@ if __name__ == "__main__":
                 # Batch request album info and add to database
                 if len(album_ids) > 0:
                     album_batch = get_batch_info('album', album_ids)
-                    if album_batch is not None: dump_albums(cursor, album_batch['albums']); conn.commit()
+                    if album_batch is not None: dump_albums(conn, cursor, album_batch['albums'])
                 else:
                     print("No albums to update, moving on...")
                     check_type = 'artists'
@@ -612,7 +603,7 @@ if __name__ == "__main__":
                 # Batch request artist info and add to database
                 if len(artist_ids) > 0:
                     artist_batch = get_batch_info('artist', artist_ids)
-                    if artist_batch is not None: dump_artists(cursor, artist_batch['artists']); conn.commit()
+                    if artist_batch is not None: dump_artists(conn, cursor, artist_batch['artists'])
                 else: 
                     print("No artists to update, moving on...")
                     check_type = 'tracks'
@@ -633,10 +624,8 @@ if __name__ == "__main__":
 
                     if len(artist_ids) > 0:
                         for artist_id in artist_ids:
-                            albums = get_artist_albums(artist_id)
-                            dump_artist_albums(cursor, albums)
+                            dump_artist_albums(conn, cursor, artist_id)
                             cursor.execute('UPDATE Artist SET retrieved_albums = 1 WHERE id = ?', (artist_id,))
-                            conn.commit()
                     else: 
                         print("No artists's albums to update, moving on...")
                         check_type = 'tracks'
@@ -661,7 +650,6 @@ if __name__ == "__main__":
 
             print("All items updated.")
             break
-        conn.commit()
     except KeyboardInterrupt:
         print("Exiting...")
     finally:
