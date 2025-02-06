@@ -47,13 +47,7 @@ def save_request_log():
         json.dump(logs, f)
 
 def check_rate_limit():
-    """
-    Ensures requests stay within Spotifys API limits (30-sec, hourly, daily).
-    If limits are exceeded, the function waits before making the next request.
-    """
-    global total_requests, halfmin_timestamps, hourly_timestamps, daily_timestamps
-    global response_times, base_wait
-
+    global total_requests, halfmin_timestamps, hourly_timestamps, daily_timestamps, response_times, base_wait
     current_time = time.time()
 
     # Clean old timestamps
@@ -390,257 +384,129 @@ def delete_tables(cursor):
         DROP TABLE IF EXISTS ArtistGenre;
     ''')
 
-def dump_user_saved(cursor, saved_tracks):
+def dump_user_saved(conn, cursor, saved_tracks):
     """
     Inserts user saved tracks into the database.
-    This function takes a database cursor and a list of saved tracks, and inserts
-    the track information into the Track, TrackArtist, Artist, and Album tables.
-    If a track or artist already exists in the database, it will be ignored or replaced.
-    Args:
-        cursor (sqlite3.Cursor): The database cursor to execute SQL commands.
-        saved_tracks (list): A list of dictionaries containing track information.
-    Each track dictionary should have the following structure:
-        {
-            'track': {
-                'id': str,
-                'name': str,
-                'artists': [
-                    {'id': str, ...},
-                    ...
-                ],
-                'album': {'id': str, ...},
-                'duration_ms': int,
-                'popularity': int,
-                'explicit': bool,
-                'track_number': int,
-                ...
-            }
-        }
-    """
-    for track in saved_tracks:
-        track_id = track['track']['id']
-        track_name = track['track']['name']
-        artist_ids = [artist['id'] for artist in track['track']['artists']]
-        album_id = track['track']['album']['id']
-        duration = int(track['track']['duration_ms'])
-        popularity = int(track['track']['popularity'])
-        explicit = int(track['track']['explicit'])
-        track_number = int(track['track']['track_number'])
-
-        print(f"Dumping track: {track_name}")
-
-        # Insert into the Track table
-        cursor.execute('''
-            INSERT OR REPLACE INTO Track (id, name, album_id, duration, popularity, explicit, track_number)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (track_id, track_name, album_id, duration, popularity, explicit, track_number))
-
-        # Insert into the TrackArtist table and Artist table
-        for artist_id in artist_ids:
-            cursor.execute('''
-                INSERT OR IGNORE INTO TrackArtist (track_id, artist_id)
-                VALUES (?, ?)
-            ''', (track_id, artist_id))
-            cursor.execute('''
-                INSERT OR IGNORE INTO Artist (id)
-                VALUES (?)
-            ''', (artist_id,))
-        
-        # Insert into the Album table
-        album_id = track['track']['album']['id']
-        cursor.execute('''
-                INSERT OR IGNORE INTO Album (id)
-                VALUES (?)
-            ''', (album_id,))
-
-def dump_tracks(cursor, tracks):
-    """
-    Inserts track information into the database.
-    This function takes a database cursor and a list of tracks, and inserts
-    the track information into the Track, TrackArtist, Artist, and Album tables.
-    If a track or artist already exists in the database, it will be ignored or replaced.
-    Args:
-        cursor (sqlite3.Cursor): The database cursor to execute SQL commands.
-        tracks (list): A list of dictionaries containing track information.
-    Each track dictionary should have the following structure:
-        {
-            'id': str,
-            'name': str,
-            'artists': [
-                {'id': str, ...},
-                ...
-            ],
-            'album': {'id': str, ...},
-            'duration_ms': int,
-            'popularity': int,
-            'explicit': bool,
-            'track_number': int,
-            ...
-        }
-    """
-    for track in tracks:
-        track_id = track['id']
-        track_name = track['name']     
-        artist_ids = [artist['id'] for artist in track['artists']] 
-        album_id = track['album']['id']
-        duration = int(track['duration_ms'])
-        popularity = int(track['popularity'])
-        explicit = int(track['explicit'])
-        track_number = int(track['track_number'])
-
-        print(f"Dumping track: {track_name}")
-
-        # Insert into the Track table
-        cursor.execute('''
-            INSERT OR REPLACE INTO Track (id, name, album_id, duration, popularity, explicit, track_number)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (track_id, track_name, album_id, duration, popularity, explicit, track_number))
-
-        # Insert into the TrackArtist table and Artist table
-        for artist_id in artist_ids:
-            cursor.execute('''
-                INSERT OR IGNORE INTO TrackArtist (track_id, artist_id)
-                VALUES (?, ?)
-            ''', (track_id, artist_id))
-            cursor.execute('''
-                INSERT OR IGNORE INTO Artist (id)
-                VALUES (?)
-            ''', (artist_id,))
-        
-        # Insert into the Album table
-        album_id = track['album']['id']
-        cursor.execute('''
-                INSERT OR IGNORE INTO Album (id)
-                VALUES (?)
-            ''', (album_id,))
-
-def dump_albums(cursor, albums):
-    """
-    Inserts album information into the database.
-    This function takes a database cursor and a list of albums, and inserts
-    the album information into the Album, AlbumArtist, Artist, and Track tables.
-    If an album, artist, or track already exists in the database, it will be ignored or replaced.
-    Args:
-        cursor (sqlite3.Cursor): The database cursor to execute SQL commands.
-        albums (list): A list of dictionaries containing album information.
-    Each album dictionary should have the following structure:
-        {
-            'id': str,
-            'name': str,
-            'artists': [
-                {'id': str, ...},
-                ...
-            ],
-            'release_date': str,
-            'total_tracks': int,
-            'label': str,
-            'album_type': str,
-            'popularity': int,
-            'tracks': {
-                'items': [
-                    {'id': str, ...},
-                    ...
-                ]
-            }
-        }
-    """
-
-    for album in albums:
-        album_id = album['id']
-        album_name = album['name']
-        artist_ids = [artist['id'] for artist in album['artists']]
-        release_date = album['release_date']
-        total_tracks = album['total_tracks']
-        label = album['label']
-        album_type = album['album_type']
-        popularity = album['popularity']
-
-        # Convert release date to ISO format
-        if len(release_date) == 4: release_date = f"{release_date}-01-01"
-        elif len(release_date) == 7: release_date = f"{release_date}-01"
-        elif len(release_date) == 10: pass
-        else: raise ValueError(f"Invalid release date: {release_date}")
-            
-        print(f"Dumping album: {album_name}")
-
-        # Insert into the Album table
-        cursor.execute('''
-            INSERT OR REPLACE INTO Album (id, name, release_date, total_tracks, label, album_type, popularity)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (album_id, album_name, release_date, total_tracks, label, album_type, popularity))
-
-        # Insert into the AlbumArtist table and Artist table
-        for artist_id in artist_ids:
-            cursor.execute('''
-                INSERT OR IGNORE INTO AlbumArtist (album_id, artist_id)
-                VALUES (?, ?)
-            ''', (album_id, artist_id))
-            cursor.execute('''
-                INSERT OR IGNORE INTO Artist (id)
-                VALUES (?)
-            ''', (artist_id,))
-        
-        # Insert into the Track table
-        for track in album['tracks']['items']:
-            track_id = track['id']
-            cursor.execute('''
-                INSERT OR IGNORE INTO Track (id)
-                VALUES (?) 
-            ''', (track_id,))
-
-def dump_artists(cursor, artists):
-    """
-    Inserts artist information into the database.
-    This function takes a database cursor and a list of artists, and inserts
-    the artist information into the Artist, ArtistGenre, Genre, and Album tables.
-    If an artist or genre already exists in the database, it will be ignored or replaced.
-    Args:
-        cursor (sqlite3.Cursor): The database cursor to execute SQL commands.
-        artists (list): A list of dictionaries containing artist information.
-    Each artist dictionary should have the following structure:
-        {
-            'id': str,
-            'name': str,
-            'popularity': int,
-            'followers': {'total': int},
-        }
     """
     
-    for artist in artists:
-        artist_id = artist['id']
-        artist_name = artist['name']
-        popularity = artist['popularity']
-        followers = artist['followers']['total']
+    print(f"Dumping {len(saved_tracks)} saved tracks...")
 
-        print(f"Dumping artist: {artist_name}")
+    with conn:
+        # Insert into the Track table
+        cursor.executemany('''
+            INSERT OR REPLACE INTO Track (id, name, album_id, duration, popularity, explicit, track_number)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', [(track['track']['id'], track['track']['name'], track['track']['album']['id'], int(track['track']['duration_ms']), int(track['track']['popularity']), int(track['track']['explicit']), int(track['track']['track_number']) ) for track in saved_tracks])
 
         # Insert into the Artist table
-        cursor.execute('''
+        cursor.executemany('''
+            INSERT OR IGNORE INTO Artist (id)
+            VALUES (?)
+        ''', [(artist['id'],) for track in saved_tracks for artist in track['track']['artists']])
+
+        # Insert into the TrackArtist
+        cursor.executemany('''
+            INSERT OR IGNORE INTO TrackArtist (track_id, artist_id)
+            VALUES (?, ?)
+        ''', [(track['track']['id'], artist['id']) for track in saved_tracks for artist in track['track']['artists']])
+        
+        # Insert into the Album table
+        cursor.executemany('''
+            INSERT OR IGNORE INTO Album (id)
+            VALUES (?)
+        ''', [(track['track']['album']['id'],) for track in saved_tracks]) 
+
+def dump_tracks(conn, cursor, tracks):
+    """
+    Inserts track information into the database.
+    """
+
+    print(f"Dumping {len(tracks)} tracks...")
+
+    with conn:
+        # Insert into the Track table
+        cursor.executemany('''
+            INSERT OR REPLACE INTO Track (id, name, album_id, duration, popularity, explicit, track_number)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', [(track['id'], track['name'], track['album']['id'], int(track['duration_ms']), int(track['popularity']), int(track['explicit']), int(track['track_number'])) for track in tracks])
+        
+        # Insert into the TrackArtist table
+        cursor.executemany('''
+            INSERT OR IGNORE INTO TrackArtist (track_id, artist_id)
+            VALUES (?, ?)
+        ''', [(track['id'], artist['id']) for track in tracks for artist in track['artists']])
+
+        # Insert into the Artist table
+        cursor.executemany('''
+            INSERT OR IGNORE INTO Artist (id)
+            VALUES (?)
+        ''', [(artist['id'],) for track in tracks for artist in track['artists']])
+
+        # Insert into Album table
+        cursor.executemany('''
+            INSERT OR IGNORE INTO Album (id) 
+            VALUES (?)
+        ''', [(track['album']['id'],) for track in tracks])
+
+def dump_albums(conn, cursor, albums):
+    """
+    Inserts album information into the database.
+    """
+
+    print(f"Dumping {len(albums)} albums...")
+
+    with conn:
+        # Insert into the Album table
+        cursor.executemany('''
+            INSERT OR REPLACE INTO Album (id, name, release_date, total_tracks, label, album_type, popularity)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', [(album['id'], album['name'], album['release_date'], album['total_tracks'], album['label'], album['album_type'], album['popularity']) for album in albums])
+        
+        # Insert into the AlbumArtist table 
+        cursor.executemany('''
+            INSERT OR IGNORE INTO AlbumArtist (album_id, artist_id)
+            VALUES (?, ?)
+        ''', [(album['id'], artist['id']) for album in albums for artist in album['artists']])
+
+        # Insert into the Artist table
+        cursor.executemany('''
+            INSERT OR IGNORE INTO Artist (id)
+            VALUES (?)
+        ''', [(artist['id'],) for album in albums for artist in album['artists']])
+
+        # Insert into the Track table
+        cursor.executemany('''
+            INSERT OR IGNORE INTO Track (id)
+            VALUES (?)
+        ''', [(track['id'],) for album in albums for track in album['tracks']['items']])
+
+def dump_artists(conn, cursor, artists):
+    """
+    Inserts artist information into the database.
+    """
+
+    print(f"Dumping {len(artists)} artists...")
+
+    with conn:
+        # Insert into the Artist table
+        cursor.executemany('''
             INSERT OR REPLACE INTO Artist (id, name, popularity, followers)
             VALUES (?, ?, ?, ?)
-        ''', (artist_id, artist_name, popularity, followers))
+        ''', [(artist['id'], artist['name'], artist['popularity'], artist['followers']['total']) for artist in artists])
 
-def dump_artist_albums(cursor, artist_id):
+def dump_artist_albums(cursor, albums):
     """
     Inserts album information for a given artist into the database.
-    This function takes a database cursor and an artist ID, and inserts
-    the album information into the Album, AlbumArtist, Artist, and Track tables.
-    If an album, artist, or track already exists in the database, it will be ignored or replaced.
-    Args:
-        cursor (sqlite3.Cursor): The database cursor to execute SQL commands.
-        artist_id (str): The Spotify ID of the artist.
     """
-    albums = get_artist_albums(artist_id)
 
     print(f"Dumping {len(albums)} albums for artist: {artist_id}")
 
-    # Insert into the Album table
-    for album in albums:
-        album_id = album['id']
-        cursor.execute('''
+    with conn:
+        # Insert into the Album table
+        cursor.executemany('''
             INSERT OR IGNORE INTO Album (id)
-            VALUES (?) 
-        ''', (album_id,))
+            VALUES (?)
+        ''', [(album['id'],) for album in albums])
 
 # Database loader flow
 # 1. Setup 
@@ -671,6 +537,7 @@ if __name__ == "__main__":
     # Connect to the SQLite database
     os.makedirs("db", exist_ok=True)
     conn = sqlite3.connect("db/spotify.sqlite")
+    conn.execute("PRAGMA journal_mode=WAL")  # Enable Write-Ahead Logging for better concurrency
     cursor = conn.cursor()
     
     # Check if running for the first time by checking if tables exist
@@ -701,17 +568,15 @@ if __name__ == "__main__":
                 # Batch request track info and add to database
                 if len(track_ids) > 0:
                     track_batch = get_batch_info('track', track_ids)
-                    if track_batch is not None: dump_tracks(cursor, track_batch['tracks'])
+                    if track_batch is not None: dump_tracks(cursor, track_batch['tracks']); conn.commit()
                 else: 
-                    conn.commit()
                     print("No tracks to update, moving on...")
                     check_type = 'albums'
                     break
-                if i % 20 == 0: 
-                    conn.commit() # Commit every 20 batches (1000 tracks)
+                if i % 10 == 0: # Print progress every 10 batches
                     cursor.execute('''SELECT COUNT(id) FROM Track WHERE name IS NULL''')
                     tracks_remaining = cursor.fetchone()[0]
-                    print(f"Committing... Tracks remaining: {tracks_remaining}")
+                    print(f"Tracks remaining: {tracks_remaining}")
                 i += 1
 
             # Albums
@@ -725,17 +590,15 @@ if __name__ == "__main__":
                 # Batch request album info and add to database
                 if len(album_ids) > 0:
                     album_batch = get_batch_info('album', album_ids)
-                    if album_batch is not None: dump_albums(cursor, album_batch['albums'])
+                    if album_batch is not None: dump_albums(cursor, album_batch['albums']); conn.commit()
                 else:
-                    conn.commit() 
                     print("No albums to update, moving on...")
                     check_type = 'artists'
                     break
-                if i % 20 == 0: 
-                    conn.commit() # Commit every 20 batches (400 albums)
+                if i % 10 == 0: # Print progress every 10 batches
                     cursor.execute('''SELECT COUNT(id) FROM Album WHERE name IS NULL''')
                     albums_remaining = cursor.fetchone()[0]
-                    print(f"Committing... Albums remaining: {albums_remaining}")
+                    print(f"Albums remaining: {albums_remaining}")
                 i += 1
 
             # Artists
@@ -749,17 +612,15 @@ if __name__ == "__main__":
                 # Batch request artist info and add to database
                 if len(artist_ids) > 0:
                     artist_batch = get_batch_info('artist', artist_ids)
-                    if artist_batch is not None: dump_artists(cursor, artist_batch['artists'])
+                    if artist_batch is not None: dump_artists(cursor, artist_batch['artists']); conn.commit()
                 else: 
-                    conn.commit()
                     print("No artists to update, moving on...")
                     check_type = 'tracks'
                     break
-                if i % 20 == 0: 
-                    conn.commit() # Commit every 20 batches (1000 artists)
+                if i % 10 == 0: # Print progress every 10 batches
                     cursor.execute('''SELECT COUNT(id) FROM Artist WHERE name IS NULL''')
                     artists_remaining = cursor.fetchone()[0]
-                    print(f"Committing... Artists remaining: {artists_remaining}")
+                    print(f"Artists remaining: {artists_remaining}")
                 i += 1
 
             # Albums from Artists (resource intensive)
@@ -772,18 +633,18 @@ if __name__ == "__main__":
 
                     if len(artist_ids) > 0:
                         for artist_id in artist_ids:
-                            dump_artist_albums(cursor, artist_id)
+                            albums = get_artist_albums(artist_id)
+                            dump_artist_albums(cursor, albums)
                             cursor.execute('UPDATE Artist SET retrieved_albums = 1 WHERE id = ?', (artist_id,))
+                            conn.commit()
                     else: 
-                        conn.commit()
                         print("No artists's albums to update, moving on...")
                         check_type = 'tracks'
                         break
                     if i % 2 == 0: 
-                        conn.commit() # Commit every 2 batches (100 artists's albums)
                         cursor.execute('''SELECT COUNT(id) FROM Artist WHERE retrieved_albums IS 0''')
                         artists_remaining = cursor.fetchone()[0]
-                        print(f"Committing... Artists remaining: {artists_remaining}")
+                        print(f"Artists remaining: {artists_remaining}")
                     i += 1
 
             # Check type defaults to tracks
