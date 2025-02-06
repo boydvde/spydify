@@ -46,7 +46,7 @@ def check_rate_limit():
 
     if len(halfmin_timestamps) >= MAX_REQUESTS_PER_30_SEC:
         wait_time = 30 - (current_time - halfmin_timestamps[0])
-        print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Rate limited: Waiting {wait_time:.2f} seconds to avoid 30-sec limit...")
+        if DEBUG: print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Waiting {wait_time:.2f} seconds to avoid 30-sec limit...")
         time.sleep(wait_time + 1)
 
     if len(hourly_timestamps) >= MAX_REQUESTS_PER_HOUR:
