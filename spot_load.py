@@ -551,77 +551,81 @@ if __name__ == "__main__":
 
     # Loop until all queues are empty
     check_type = input("Start at (tracks, albums, artists): ")
-    check_albums = input("Check albums? (y/n): ") in ('y', 'yes')
+    skip_albums = input("Skip fetching artist's discography? (y/n): ") in ('y', 'yes')
     try:
         while True:
-            # Tracks
-            i = 1
-            while True:
-                if check_type != 'tracks': break
-                # Scan database for tracks with no info
-                cursor.execute('SELECT id FROM Track WHERE name IS NULL ORDER BY RANDOM() LIMIT 50;')
-                track_ids = [row[0] for row in cursor.fetchall()]
 
-                # Batch request track info and add to database
-                if len(track_ids) > 0:
-                    track_batch = get_batch_info('track', track_ids)
-                    if track_batch is not None: dump_tracks(conn, cursor, track_batch['tracks'])
-                else: 
-                    print("No tracks to update, moving on...")
-                    check_type = 'albums'
-                    break
-                if i % 10 == 0: # Print progress every 10 batches
-                    cursor.execute('''SELECT COUNT(id) FROM Track WHERE name IS NULL''')
-                    tracks_remaining = cursor.fetchone()[0]
-                    print(f"Tracks remaining: {tracks_remaining}")
-                i += 1
+            # Tracks
+            if check_type == 'tracks':
+                print("Fetching tracks...")
+                i = 1
+                while True:
+                    # Scan database for tracks with no info
+                    cursor.execute('SELECT id FROM Track WHERE name IS NULL ORDER BY RANDOM() LIMIT 50;')
+                    track_ids = [row[0] for row in cursor.fetchall()]
+
+                    # Batch request track info and add to database
+                    if len(track_ids) > 0:
+                        track_batch = get_batch_info('track', track_ids)
+                        if track_batch is not None: dump_tracks(conn, cursor, track_batch['tracks'])
+                    else: 
+                        print("No tracks to update, moving on...")
+                        check_type = 'albums'
+                        break
+                    if i % 10 == 0: # Print progress every 10 batches
+                        cursor.execute('''SELECT COUNT(id) FROM Track WHERE name IS NULL''')
+                        tracks_remaining = cursor.fetchone()[0]
+                        print(f"Tracks remaining: {tracks_remaining}")
+                    i += 1
 
             # Albums
-            i = 1
-            while True:
-                if check_type != 'albums': break
-                # Scan database for albums with no info
-                cursor.execute('SELECT id FROM Album WHERE name IS NULL ORDER BY RANDOM() LIMIT 20;')
-                album_ids = [row[0] for row in cursor.fetchall()]
+            if check_type == 'albums':
+                print("Fetching albums...")
+                i = 1
+                while True:
+                    # Scan database for albums with no info
+                    cursor.execute('SELECT id FROM Album WHERE name IS NULL ORDER BY RANDOM() LIMIT 20;')
+                    album_ids = [row[0] for row in cursor.fetchall()]
 
-                # Batch request album info and add to database
-                if len(album_ids) > 0:
-                    album_batch = get_batch_info('album', album_ids)
-                    if album_batch is not None: dump_albums(conn, cursor, album_batch['albums'])
-                else:
-                    print("No albums to update, moving on...")
-                    check_type = 'artists'
-                    break
-                if i % 10 == 0: # Print progress every 10 batches
-                    cursor.execute('''SELECT COUNT(id) FROM Album WHERE name IS NULL''')
-                    albums_remaining = cursor.fetchone()[0]
-                    print(f"Albums remaining: {albums_remaining}")
-                i += 1
+                    # Batch request album info and add to database
+                    if len(album_ids) > 0:
+                        album_batch = get_batch_info('album', album_ids)
+                        if album_batch is not None: dump_albums(conn, cursor, album_batch['albums'])
+                    else:
+                        print("No albums to update, moving on...")
+                        check_type = 'artists'
+                        break
+                    if i % 10 == 0: # Print progress every 10 batches
+                        cursor.execute('''SELECT COUNT(id) FROM Album WHERE name IS NULL''')
+                        albums_remaining = cursor.fetchone()[0]
+                        print(f"Albums remaining: {albums_remaining}")
+                    i += 1
 
             # Artists
-            i = 1
-            while True:
-                if check_type != 'artists': break
-                # Scan database for artists with no info
-                cursor.execute('SELECT id FROM Artist WHERE name IS NULL ORDER BY RANDOM() LIMIT 50;')
-                artist_ids = [row[0] for row in cursor.fetchall()]
+            if check_type == 'artists':
+                print("Fetching artists...")
+                i = 1
+                while True:
+                    # Scan database for artists with no info
+                    cursor.execute('SELECT id FROM Artist WHERE name IS NULL ORDER BY RANDOM() LIMIT 50;')
+                    artist_ids = [row[0] for row in cursor.fetchall()]
 
-                # Batch request artist info and add to database
-                if len(artist_ids) > 0:
-                    artist_batch = get_batch_info('artist', artist_ids)
-                    if artist_batch is not None: dump_artists(conn, cursor, artist_batch['artists'])
-                else: 
-                    print("No artists to update, moving on...")
-                    check_type = 'tracks'
-                    break
-                if i % 10 == 0: # Print progress every 10 batches
-                    cursor.execute('''SELECT COUNT(id) FROM Artist WHERE name IS NULL''')
-                    artists_remaining = cursor.fetchone()[0]
-                    print(f"Artists remaining: {artists_remaining}")
-                i += 1
+                    # Batch request artist info and add to database
+                    if len(artist_ids) > 0:
+                        artist_batch = get_batch_info('artist', artist_ids)
+                        if artist_batch is not None: dump_artists(conn, cursor, artist_batch['artists'])
+                    else: 
+                        print("No artists to update, moving on...")
+                        check_type = 'tracks'
+                        break
+                    if i % 10 == 0: # Print progress every 10 batches
+                        cursor.execute('''SELECT COUNT(id) FROM Artist WHERE name IS NULL''')
+                        artists_remaining = cursor.fetchone()[0]
+                        print(f"Artists remaining: {artists_remaining}")
+                    i += 1
 
-            # Albums from Artists (resource intensive)
-            if check_albums:
+            # Albums from Artists (high request rate)
+            if not skip_albums:
                 i = 1
                 while True:
                     # Scan database for artists whose albums have not been checked yet
