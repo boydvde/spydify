@@ -1,4 +1,4 @@
-import os, ssl, json, time, sqlite3, requests
+import os, json, time, sqlite3, requests
 from collections import deque
 from dotenv import load_dotenv
 from spot_access import get_user_token, login
@@ -75,17 +75,17 @@ def check_rate_limit():
 
     if len(halfmin_timestamps) >= MAX_REQUESTS_PER_30_SEC:
         wait_time = 30 - (current_time - halfmin_timestamps[0])
-        print(f"Rate limited: Waiting {wait_time:.2f} seconds to avoid 30-sec limit...")
+        print(f"[{time.ctime(current_time)}] Rate limited: Waiting {wait_time:.2f} seconds to avoid 30-sec limit...")
         time.sleep(wait_time + 1)
 
     if len(hourly_timestamps) >= MAX_REQUESTS_PER_HOUR:
         wait_time = 3600 - (current_time - hourly_timestamps[0])
-        print(f"Hourly limit reached: Waiting {wait_time / 60:.2f} minutes...")
+        print(f"[{time.ctime(current_time)}] Hourly limit reached: Waiting {wait_time / 60:.2f} minutes...")
         time.sleep(wait_time + 1)
 
     if len(daily_timestamps) >= MAX_REQUESTS_PER_DAY:
         wait_time = 86400 - (current_time - daily_timestamps[0])
-        print(f"Daily limit reached: Waiting {wait_time / 3600:.2f} hours...")
+        print(f"[{time.ctime(current_time)}] Daily limit reached: Retrying in {wait_time / 3600:.2f} hours...")
         time.sleep(wait_time + 1)
 
     halfmin_timestamps.append(current_time)
