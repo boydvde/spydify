@@ -23,7 +23,7 @@ def get_genre(artist_name, retries=3):
 
     url = "http://ws.audioscrobbler.com/2.0/"
     params = {
-        "method": "artist.getinfo",
+        "method": "artist.getTopTags",
         "artist": artist_name,
         "api_key": LASTFM_API_KEY,
         "format": "json"
@@ -31,23 +31,32 @@ def get_genre(artist_name, retries=3):
 
     for attempt in range(retries):
         try:
-            response = requests.get(url, params=params)
+            response = requests.get(url=url, params=params)
             response.raise_for_status()  # Raises error for HTTP failures (4xx, 5xx)
 
             try:
                 data = response.json()
+
+                # {
+                #     "toptags": {
+                #         "tag": [
+                #             {"name": "rock", "count": 100},
+                #             {"name": "alternative", "count": 85},
+                #             {"name": "indie", "count": 75}
+                #         ]
+                #     }
+                # }
+
             except requests.exceptions.JSONDecodeError:
-                print(f"⚠️ JSONDecodeError for artist {artist_name}. Retrying...")
+                print(f"JSONDecodeError for artist {artist_name}. Retrying...")
                 time.sleep(2)
                 continue  # Retry
 
             timestamps.append(time.time())
 
-            if "artist" in data and "tags" in data["artist"]:
-                genres = [tag["name"] for tag in data["artist"]["tags"]["tag"]]
-                return genres if genres else ["unknown"]
-
-            return ["unknown"]
+            if data.get("toptags", {}).get("tag"): # Check if tag list is not empty
+                return [data["toptags"]["tag"][0]["name"]] # Return the most popular tag
+            return ["unknown"] # Return "unknown" if no tags found
         
         except requests.RequestException as e:
             print(f"⚠️ API request failed for {artist_name}: {e}")
