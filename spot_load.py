@@ -508,22 +508,26 @@ def delete_tables(cursor):
 
 # Database loader flow
 # 1. Setup 
-#   a. Create tables 
+#   a. Create tables if they don't exist
 #   b. Get user saved tracks info
 #   c. Initial dump of user saved tracks into database
 # 2. Loop
-#   a. Scan database for tracks ids with no info and add to batch
+#   a. Scan database for track ids with no info and add to batch
 #   b. Batch request track info, add to database
 #   c. Repeat until all tracks are updated
 #   
-#   a. Scan database for albums ids with no info and add to batch
+#   a. Scan database for album ids with no info and add to batch
 #   b. Batch request album info, add to database
 #   c. Repeat until all albums are updated 
 #   
-#   a. Scan database for artists ids with no info and add to batch
-#   b. Batch request artist info, add to database (also get artist's albums) SLOW!!!
+#   a. Scan database for artist ids with no info and add to batch
+#   b. Batch request artist info, add to database
 #   c. Repeat until all artists are updated
-# 3. Repeat until all queses are empty
+#   
+#   a. Scan database for artists whose albums have not been checked yet
+#   b. Fetch full album details for each artist in batches and add to database
+#   c. Repeat until all artist's albums are updated
+# 3. Repeat until all queues are empty
 
 if __name__ == "__main__":
     # Check if logged in, else login
