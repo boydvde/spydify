@@ -7,29 +7,7 @@ import plotly.graph_objects as go # pip install plotly
 # Load data from database into a pandas DataFrame
 def load(conn):
     data_frame = pd.read_sql("""
-SELECT 
-    a1.name AS artist_1, 
-    a2.name AS artist_2, 
-    COUNT(DISTINCT ta1.track_id) AS collaboration_count,
-    COALESCE(g1.name, 'unknown') AS genre_1,
-    COALESCE(g2.name, 'unknown') AS genre_2
-FROM TrackArtist ta1
-JOIN TrackArtist ta2 ON ta1.track_id = ta2.track_id AND ta1.artist_id < ta2.artist_id
-JOIN Artist a1 ON ta1.artist_id = a1.id
-JOIN Artist a2 ON ta2.artist_id = a2.id
-LEFT JOIN ArtistGenre ag1 ON a1.id = ag1.artist_id
-LEFT JOIN Genre g1 ON ag1.genre_id = g1.id
-LEFT JOIN ArtistGenre ag2 ON a2.id = ag2.artist_id
-LEFT JOIN Genre g2 ON ag2.genre_id = g2.id
-WHERE 
-    a1.popularity > 50 
-    AND a2.popularity > 50
-    AND ta1.track_id IN (
-        SELECT id FROM Track 
-        WHERE popularity >= 10
-    )
-GROUP BY a1.name, a2.name, genre_1, genre_2
-ORDER BY collaboration_count DESC;
+        TODO: Rewrite SQL query to load data from the database
     """, conn)
     return data_frame
 
