@@ -369,6 +369,8 @@ def dump_artist_albums(conn, cursor, artist_id):
 
     if not album_ids:
         if DEBUG: print(f"No albums found for artist: {artist_id}")
+        cursor.execute('UPDATE Artist SET retrieved_albums = 1 WHERE id = ?', (artist_id,))
+        conn.commit()
         return
 
     if DEBUG: print(f"Fetching {len(album_ids)} albums for artist: {artist_id} in batches...")
@@ -384,6 +386,10 @@ def dump_artist_albums(conn, cursor, artist_id):
         if album_data and 'albums' in album_data:
             if DEBUG: print(f"Dumping {len(album_data['albums'])} albums for artist: {artist_id}")
             dump_albums(conn, cursor, album_data['albums'])
+
+    # Mark the artist as having retrieved albums
+    cursor.execute('UPDATE Artist SET retrieved_albums = 1 WHERE id = ?', (artist_id,))
+    conn.commit()
 
 def create_tables(cursor): # Deprecated (SQL schema changed)
     """
@@ -625,7 +631,6 @@ if __name__ == "__main__":
                     if len(artist_ids) > 0:
                         for artist_id in artist_ids:
                             dump_artist_albums(conn, cursor, artist_id)
-                            cursor.execute('UPDATE Artist SET retrieved_albums = 1 WHERE id = ?', (artist_id,))
                     else: 
                         print("No artists's albums to update, moving on...")
                         check_type = 'tracks'
