@@ -35,35 +35,35 @@ def check_rate_limit():
     while daily_timestamps and current_time - daily_timestamps[0] > 86400: daily_timestamps.popleft()
 
     if DEBUG and total_requests % 10 == 0:
-        print(f"Total requests: {total_requests}")
-        print(f"Requests in last 30 seconds: {len(halfmin_timestamps)}")
-        print(f"Requests in last hour: {len(hourly_timestamps)}")
-        print(f"Requests in last day: {len(daily_timestamps)}")
-        print(f"Waiting {base_wait:.2f} seconds before next request...")
+        print(f"[{time.ctime()}] Total requests: {total_requests}")
+        print(f"[{time.ctime()}] Requests in last 30 seconds: {len(halfmin_timestamps)}")
+        print(f"[{time.ctime()}] Requests in last hour: {len(hourly_timestamps)}")
+        print(f"[{time.ctime()}] Requests in last day: {len(daily_timestamps)}")
+        print(f"[{time.ctime()}] Waiting {base_wait:.2f} seconds before next request...")
 
     time.sleep(base_wait)  # Base wait time before making requests
 
     if len(halfmin_timestamps) >= MAX_REQUESTS_PER_30_SEC:
         wait_time = 30 - (current_time - halfmin_timestamps[0])
-        print(f"[{time.ctime(current_time)}] Rate limited: Waiting {wait_time:.2f} seconds to avoid 30-sec limit...")
+        print(f"[{time.ctime()}] Rate limited: Waiting {wait_time:.2f} seconds to avoid 30-sec limit...")
         time.sleep(wait_time + 1)
 
     if len(hourly_timestamps) >= MAX_REQUESTS_PER_HOUR:
         wait_time = 3600 - (current_time - hourly_timestamps[0])
         if wait_time > 60:
-            print(f"[{time.ctime(current_time)}] Hourly limit reached: Retrying in {wait_time / 60:.2f} minutes...")
+            print(f"[{time.ctime()}] Hourly limit reached: Retrying in {wait_time / 60:.2f} minutes...")
         else:
-            print(f"[{time.ctime(current_time)}] Hourly limit reached: Retrying in {wait_time:.2f} seconds...")
+            print(f"[{time.ctime()}] Hourly limit reached: Retrying in {wait_time:.2f} seconds...")
         time.sleep(wait_time + 1)
 
     if len(daily_timestamps) >= MAX_REQUESTS_PER_DAY:
         wait_time = 86400 - (current_time - daily_timestamps[0])
         if wait_time > 3600:
-            print(f"[{time.ctime(current_time)}] Daily limit reached: Retrying in {wait_time / 3600:.2f} hours...")
+            print(f"[{time.ctime()}] Daily limit reached: Retrying in {wait_time / 3600:.2f} hours...")
         elif wait_time > 60:
-            print(f"[{time.ctime(current_time)}] Daily limit reached: Retrying in {wait_time / 60:.2f} minutes...")
+            print(f"[{time.ctime()}] Daily limit reached: Retrying in {wait_time / 60:.2f} minutes...")
         else:
-            print(f"[{time.ctime(current_time)}] Daily limit reached: Retrying in {wait_time:.2f} seconds...")
+            print(f"[{time.ctime()}] Daily limit reached: Retrying in {wait_time:.2f} seconds...")
         time.sleep(wait_time + 1)
 
     halfmin_timestamps.append(current_time)
@@ -81,9 +81,9 @@ def load_request_log():
             hourly_timestamps = deque(logs['hourly_timestamps'])
             daily_timestamps = deque(logs['daily_timestamps'])
     except FileNotFoundError:
-        print("Request log file not found. Starting fresh.")
+        print(f"[{time.ctime()}] Request log file not found. Starting fresh.")
     except json.JSONDecodeError:
-        print("Error decoding request log file. Starting fresh.")
+        print(f"[{time.ctime()}] Error decoding request log file. Starting fresh.")
 
 def save_request_log():
     logs = {
@@ -123,12 +123,12 @@ def get_info(item_type, item_id, retries=3):
         except requests.exceptions.HTTPError as e:
             if response.status_code == 429 and attempt < retries - 1:
                 retry_after = int(response.headers.get("Retry-After", 1))
-                print(f"HTTP 429: Rate limited. Retrying in {retry_after} seconds...")
+                print(f"[{time.ctime()}] HTTP 429: Rate limited. Retrying in {retry_after} seconds...")
                 time.sleep(retry_after)
             else:
-                print(f"HTTP Error: {e}")
+                print(f"[{time.ctime()}] HTTP Error: {e}")
         except requests.exceptions.RequestException as e:
-            print(f"Request error: {e}")
+            print(f"[{time.ctime()}] Request error: {e}")
         time.sleep(2 ** attempt)  # Exponential backoff
     return None
 
@@ -167,12 +167,12 @@ def get_batch_info(item_type, item_ids, retries=3):
         except requests.exceptions.HTTPError as e:
             if response.status_code == 429 and attempt < retries - 1:
                 retry_after = int(response.headers.get("Retry-After", 1))
-                print(f"HTTP 429: Rate limited. Retrying in {retry_after} seconds...")
+                print(f"[{time.ctime()}] HTTP 429: Rate limited. Retrying in {retry_after} seconds...")
                 time.sleep(retry_after)
             else:
-                print(f"HTTP Error: {e}")
+                print(f"[{time.ctime()}] HTTP Error: {e}")
         except requests.exceptions.RequestException as e:
-            print(f"Request error: {e}")
+            print(f"[{time.ctime()}] Request error: {e}")
         time.sleep(2 ** attempt)
     return None
 
@@ -218,13 +218,13 @@ def get_user_saved(retries=3):
             except requests.exceptions.HTTPError as e:
                 if response.status_code == 429 and attempt < retries - 1:
                     retry_after = int(response.headers.get("Retry-After", 1))
-                    print(f"HTTP 429: Rate limited. Retrying in {retry_after} seconds...")
+                    print(f"[{time.ctime()}] HTTP 429: Rate limited. Retrying in {retry_after} seconds...")
                     time.sleep(retry_after)
                 else:
-                    print(f"HTTP Error: {e}")
+                    print(f"[{time.ctime()}] HTTP Error: {e}")
                     return tracks  # Return whatever data was collected
             except requests.exceptions.RequestException as e:
-                print(f"Request error: {e}")
+                print(f"[{time.ctime()}] Request error: {e}")
         
         time.sleep(2 ** attempt)  # Exponential backoff
 
@@ -266,13 +266,13 @@ def get_artist_albums(artist_id, retries=3):
             except requests.exceptions.HTTPError as e:
                 if response.status_code == 429 and attempt < retries - 1:
                     retry_after = int(response.headers.get("Retry-After", 1))
-                    print(f"HTTP 429: Rate limited. Retrying in {retry_after} seconds...")
+                    print(f"[{time.ctime()}] HTTP 429: Rate limited. Retrying in {retry_after} seconds...")
                     time.sleep(retry_after)
                 else:
-                    print(f"HTTP Error: {e}")
+                    print(f"[{time.ctime()}] HTTP Error: {e}")
                     return album_ids  # Return whatever data was collected
             except requests.exceptions.RequestException as e:
-                print(f"Request error: {e}")
+                print(f"[{time.ctime()}] Request error: {e}")
 
         time.sleep(2 ** attempt)  # Exponential backoff
 
@@ -283,7 +283,7 @@ def dump_tracks(conn, cursor, tracks):
     Inserts track information into the database.
     """
 
-    if DEBUG: print(f"Dumping {len(tracks)} tracks...")
+    if DEBUG: print(f"[{time.ctime()}] Dumping {len(tracks)} tracks...")
 
     with conn:
         # Insert into the Track table
@@ -315,7 +315,7 @@ def dump_albums(conn, cursor, albums):
     Inserts album information into the database.
     """
 
-    if DEBUG: print(f"Dumping {len(albums)} albums...")
+    if DEBUG: print(f"[{time.ctime()}] Dumping {len(albums)} albums...")
 
     with conn:
         # Insert into the Album table
@@ -347,7 +347,7 @@ def dump_artists(conn, cursor, artists):
     Inserts artist information into the database.
     """
 
-    if DEBUG: print(f"Dumping {len(artists)} artists...")
+    if DEBUG: print(f"[{time.ctime()}] Dumping {len(artists)} artists...")
 
     with conn:
         # Insert into the Artist table
@@ -368,12 +368,12 @@ def dump_artist_albums(conn, cursor, artist_id):
     album_ids = get_artist_albums(artist_id)
 
     if not album_ids:
-        if DEBUG: print(f"No albums found for artist: {artist_id}")
+        if DEBUG: print(f"[{time.ctime()}] No albums found for artist: {artist_id}")
         cursor.execute('UPDATE Artist SET retrieved_albums = 1 WHERE id = ?', (artist_id,))
         conn.commit()
         return
 
-    if DEBUG: print(f"Fetching {len(album_ids)} albums for artist: {artist_id} in batches...")
+    if DEBUG: print(f"[{time.ctime()}] Fetching {len(album_ids)} albums for artist: {artist_id} in batches...")
 
     # Process album IDs in batches of 20 (Spotify's batch limit)
     batch_size = 20
@@ -384,7 +384,7 @@ def dump_artist_albums(conn, cursor, artist_id):
         album_data = get_batch_info('album', batch)
 
         if album_data and 'albums' in album_data:
-            if DEBUG: print(f"Dumping {len(album_data['albums'])} albums for artist: {artist_id}")
+            if DEBUG: print(f"[{time.ctime()}] Dumping {len(album_data['albums'])} albums for artist: {artist_id}")
             dump_albums(conn, cursor, album_data['albums'])
 
     # Mark the artist as having retrieved albums
@@ -557,7 +557,7 @@ if __name__ == "__main__":
 
             # Tracks
             if check_type == 'tracks':
-                print("Fetching tracks...")
+                print(f"[{time.ctime()}] Fetching tracks...")
                 i = 1
                 while True:
                     # Scan database for tracks with no info
@@ -569,18 +569,18 @@ if __name__ == "__main__":
                         track_batch = get_batch_info('track', track_ids)
                         if track_batch is not None: dump_tracks(conn, cursor, track_batch['tracks'])
                     else: 
-                        print("No tracks to update, moving on...")
+                        print(f"[{time.ctime()}] No tracks to update, moving on...")
                         check_type = 'albums'
                         break
                     if i % 10 == 0: # Print progress every 10 batches
                         cursor.execute('''SELECT COUNT(id) FROM Track WHERE name IS NULL''')
                         tracks_remaining = cursor.fetchone()[0]
-                        print(f"Tracks remaining: {tracks_remaining}")
+                        print(f"[{time.ctime()}] Tracks remaining: {tracks_remaining}")
                     i += 1
 
             # Albums
             if check_type == 'albums':
-                print("Fetching albums...")
+                print(f"[{time.ctime()}] Fetching albums...")
                 i = 1
                 while True:
                     # Scan database for albums with no info
@@ -592,18 +592,18 @@ if __name__ == "__main__":
                         album_batch = get_batch_info('album', album_ids)
                         if album_batch is not None: dump_albums(conn, cursor, album_batch['albums'])
                     else:
-                        print("No albums to update, moving on...")
+                        print(f"[{time.ctime()}] No albums to update, moving on...")
                         check_type = 'artists'
                         break
                     if i % 10 == 0: # Print progress every 10 batches
                         cursor.execute('''SELECT COUNT(id) FROM Album WHERE name IS NULL''')
                         albums_remaining = cursor.fetchone()[0]
-                        print(f"Albums remaining: {albums_remaining}")
+                        print(f"[{time.ctime()}] Albums remaining: {albums_remaining}")
                     i += 1
 
             # Artists
             if check_type == 'artists':
-                print("Fetching artists...")
+                print(f"[{time.ctime()}] Fetching artists...")
                 i = 1
                 while True:
                     # Scan database for artists with no info
@@ -615,13 +615,13 @@ if __name__ == "__main__":
                         artist_batch = get_batch_info('artist', artist_ids)
                         if artist_batch is not None: dump_artists(conn, cursor, artist_batch['artists'])
                     else: 
-                        print("No artists to update, moving on...")
+                        print(f"[{time.ctime()}] No artists to update, moving on...")
                         check_type = 'tracks'
                         break
                     if i % 10 == 0: # Print progress every 10 batches
                         cursor.execute('''SELECT COUNT(id) FROM Artist WHERE name IS NULL''')
                         artists_remaining = cursor.fetchone()[0]
-                        print(f"Artists remaining: {artists_remaining}")
+                        print(f"[{time.ctime()}] Artists remaining: {artists_remaining}")
                     i += 1
 
             # Albums from Artists (high request rate)
@@ -636,13 +636,13 @@ if __name__ == "__main__":
                         for artist_id in artist_ids:
                             dump_artist_albums(conn, cursor, artist_id)
                     else: 
-                        print("No artists's albums to update, moving on...")
+                        print(f"[{time.ctime()}] No artists's albums to update, moving on...")
                         check_type = 'tracks'
                         break
                     if i % 2 == 0: 
                         cursor.execute('''SELECT COUNT(id) FROM Artist WHERE retrieved_albums IS 0''')
                         artists_remaining = cursor.fetchone()[0]
-                        print(f"Artists remaining: {artists_remaining}")
+                        print(f"[{time.ctime()}] Artists remaining: {artists_remaining}")
                     i += 1
 
             # Check type defaults to tracks
@@ -657,13 +657,13 @@ if __name__ == "__main__":
             cursor.execute("SELECT COUNT(id) FROM Artist WHERE name IS NULL OR retrieved_albums = 0")
             if cursor.fetchone()[0] > 0: continue
 
-            print("All items updated.")
+            print(f"[{time.ctime()}] All items updated.")
             break
     except KeyboardInterrupt:
-        print("Exiting...")
+        print(f"[{time.ctime()}] Exiting...")
     finally:
         conn.commit()
         conn.close()
         save_request_log()
-        print("Database connection closed.")
-        print("Request log saved.")
+        print(f"[{time.ctime()}] Database connection closed.")
+        print(f"[{time.ctime()}] Request log saved.")
