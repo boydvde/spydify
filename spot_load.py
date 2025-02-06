@@ -50,7 +50,7 @@ def check_rate_limit():
         time.sleep(wait_time + 1)
 
     if len(hourly_timestamps) >= MAX_REQUESTS_PER_HOUR:
-        wait_time = 3600 - (current_time - hourly_timestamps[0])
+        wait_time = 3600 - (current_time - hourly_timestamps[0]) + 300  # Add 5 minutes to avoid the hourly limit
         if wait_time > 60:
             print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Hourly limit reached: Retrying in {wait_time / 60:.2f} minutes...")
         else:
@@ -58,7 +58,7 @@ def check_rate_limit():
         time.sleep(wait_time + 1)
 
     if len(daily_timestamps) >= MAX_REQUESTS_PER_DAY:
-        wait_time = 86400 - (current_time - daily_timestamps[0])
+        wait_time = 86400 - (current_time - daily_timestamps[0]) + 300 # Add 5 minutes to avoid the daily limit
         if wait_time > 3600:
             print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Daily limit reached: Retrying in {wait_time / 3600:.2f} hours...")
         elif wait_time > 60:
