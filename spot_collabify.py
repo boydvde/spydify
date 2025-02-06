@@ -55,7 +55,7 @@ if __name__ == "__main__":
         data_frame = load(conn)
 
     # Create NetworkX graph
-    min_collaborations = 3  # Set this value as needed
+    min_collaborations = 4  # Set this value as needed
     G_filtered = create_graph(data_frame, min_collaborations)
 
     # Calculate degree centrality
@@ -69,15 +69,13 @@ if __name__ == "__main__":
     print(f"Detected {len(set(partition.values()))} artist communities. (Louvain community detection)")
 
     # Compute positions for NetworkX graph
-    pos = nx.spring_layout(G_filtered, seed=42, k=0.1, iterations=50, weight="weight")
+    # pos = nx.spring_layout(G_filtered, seed=42, k=0.1, iterations=50, weight="weight")
+    # pos = nx.kamada_kawai_layout(G_filtered) 
+    pos = nx.fruchterman_reingold_layout(G_filtered, seed=42, k=0.15, iterations=100)
 
     # Extract node positions
     node_x = [pos[node][0] for node in G_filtered.nodes()]
     node_y = [pos[node][1] for node in G_filtered.nodes()]
-
-    # Create a dictionary mapping artists to genres
-    artist_genre_map = {row["artist_1"]: row["genre_1"] for _, row in data_frame.iterrows()}
-    artist_genre_map.update({row["artist_2"]: row["genre_2"] for _, row in data_frame.iterrows()})
 
     # Create figure
     fig = go.Figure()
@@ -103,7 +101,7 @@ if __name__ == "__main__":
     fig.add_trace(go.Scatter(
         x=node_x, y=node_y, mode="markers",
         marker=dict(color=node_colors, size=10),
-        text=[f"{node} ({artist_genre_map.get(node, 'unknown')})" for node in G_filtered.nodes()],
+        text=[f"{node}" for node in G_filtered.nodes()],
         hoverinfo="text"
     ))
 
