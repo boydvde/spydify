@@ -1,5 +1,6 @@
 import os, json, time, sqlite3, requests
 from collections import deque
+from datetime import datetime
 from dotenv import load_dotenv
 from spot_access import get_user_token, login
 
@@ -35,35 +36,35 @@ def check_rate_limit():
     while daily_timestamps and current_time - daily_timestamps[0] > 86400: daily_timestamps.popleft()
 
     if DEBUG and total_requests % 10 == 0:
-        print(f"[{time.ctime()}] Total requests: {total_requests}")
-        print(f"[{time.ctime()}] Requests in last 30 seconds: {len(halfmin_timestamps)}")
-        print(f"[{time.ctime()}] Requests in last hour: {len(hourly_timestamps)}")
-        print(f"[{time.ctime()}] Requests in last day: {len(daily_timestamps)}")
-        print(f"[{time.ctime()}] Waiting {base_wait:.2f} seconds before next request...")
+        print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Total requests: {total_requests}")
+        print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Requests in last 30 seconds: {len(halfmin_timestamps)}")
+        print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Requests in last hour: {len(hourly_timestamps)}")
+        print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Requests in last day: {len(daily_timestamps)}")
+        print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Waiting {base_wait:.2f} seconds before next request...")
 
     time.sleep(base_wait)  # Base wait time before making requests
 
     if len(halfmin_timestamps) >= MAX_REQUESTS_PER_30_SEC:
         wait_time = 30 - (current_time - halfmin_timestamps[0])
-        print(f"[{time.ctime()}] Rate limited: Waiting {wait_time:.2f} seconds to avoid 30-sec limit...")
+        print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Rate limited: Waiting {wait_time:.2f} seconds to avoid 30-sec limit...")
         time.sleep(wait_time + 1)
 
     if len(hourly_timestamps) >= MAX_REQUESTS_PER_HOUR:
         wait_time = 3600 - (current_time - hourly_timestamps[0])
         if wait_time > 60:
-            print(f"[{time.ctime()}] Hourly limit reached: Retrying in {wait_time / 60:.2f} minutes...")
+            print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Hourly limit reached: Retrying in {wait_time / 60:.2f} minutes...")
         else:
-            print(f"[{time.ctime()}] Hourly limit reached: Retrying in {wait_time:.2f} seconds...")
+            print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Hourly limit reached: Retrying in {wait_time:.2f} seconds...")
         time.sleep(wait_time + 1)
 
     if len(daily_timestamps) >= MAX_REQUESTS_PER_DAY:
         wait_time = 86400 - (current_time - daily_timestamps[0])
         if wait_time > 3600:
-            print(f"[{time.ctime()}] Daily limit reached: Retrying in {wait_time / 3600:.2f} hours...")
+            print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Daily limit reached: Retrying in {wait_time / 3600:.2f} hours...")
         elif wait_time > 60:
-            print(f"[{time.ctime()}] Daily limit reached: Retrying in {wait_time / 60:.2f} minutes...")
+            print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Daily limit reached: Retrying in {wait_time / 60:.2f} minutes...")
         else:
-            print(f"[{time.ctime()}] Daily limit reached: Retrying in {wait_time:.2f} seconds...")
+            print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Daily limit reached: Retrying in {wait_time:.2f} seconds...")
         time.sleep(wait_time + 1)
 
     halfmin_timestamps.append(current_time)
@@ -81,9 +82,9 @@ def load_request_log():
             hourly_timestamps = deque(logs['hourly_timestamps'])
             daily_timestamps = deque(logs['daily_timestamps'])
     except FileNotFoundError:
-        print(f"[{time.ctime()}] Request log file not found. Starting fresh.")
+        print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Request log file not found. Starting fresh.")
     except json.JSONDecodeError:
-        print(f"[{time.ctime()}] Error decoding request log file. Starting fresh.")
+        print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Error decoding request log file. Starting fresh.")
 
 def save_request_log():
     logs = {
@@ -123,12 +124,12 @@ def get_info(item_type, item_id, retries=3):
         except requests.exceptions.HTTPError as e:
             if response.status_code == 429 and attempt < retries - 1:
                 retry_after = int(response.headers.get("Retry-After", 1))
-                print(f"[{time.ctime()}] HTTP 429: Rate limited. Retrying in {retry_after} seconds...")
+                print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] HTTP 429: Rate limited. Retrying in {retry_after} seconds...")
                 time.sleep(retry_after)
             else:
-                print(f"[{time.ctime()}] HTTP Error: {e}")
+                print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] HTTP Error: {e}")
         except requests.exceptions.RequestException as e:
-            print(f"[{time.ctime()}] Request error: {e}")
+            print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Request error: {e}")
         time.sleep(2 ** attempt)  # Exponential backoff
     return None
 
@@ -167,12 +168,12 @@ def get_batch_info(item_type, item_ids, retries=3):
         except requests.exceptions.HTTPError as e:
             if response.status_code == 429 and attempt < retries - 1:
                 retry_after = int(response.headers.get("Retry-After", 1))
-                print(f"[{time.ctime()}] HTTP 429: Rate limited. Retrying in {retry_after} seconds...")
+                print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] HTTP 429: Rate limited. Retrying in {retry_after} seconds...")
                 time.sleep(retry_after)
             else:
-                print(f"[{time.ctime()}] HTTP Error: {e}")
+                print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] HTTP Error: {e}")
         except requests.exceptions.RequestException as e:
-            print(f"[{time.ctime()}] Request error: {e}")
+            print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Request error: {e}")
         time.sleep(2 ** attempt)
     return None
 
@@ -218,13 +219,13 @@ def get_user_saved(retries=3):
             except requests.exceptions.HTTPError as e:
                 if response.status_code == 429 and attempt < retries - 1:
                     retry_after = int(response.headers.get("Retry-After", 1))
-                    print(f"[{time.ctime()}] HTTP 429: Rate limited. Retrying in {retry_after} seconds...")
+                    print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] HTTP 429: Rate limited. Retrying in {retry_after} seconds...")
                     time.sleep(retry_after)
                 else:
-                    print(f"[{time.ctime()}] HTTP Error: {e}")
+                    print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] HTTP Error: {e}")
                     return tracks  # Return whatever data was collected
             except requests.exceptions.RequestException as e:
-                print(f"[{time.ctime()}] Request error: {e}")
+                print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Request error: {e}")
         
         time.sleep(2 ** attempt)  # Exponential backoff
 
@@ -266,13 +267,13 @@ def get_artist_albums(artist_id, retries=3):
             except requests.exceptions.HTTPError as e:
                 if response.status_code == 429 and attempt < retries - 1:
                     retry_after = int(response.headers.get("Retry-After", 1))
-                    print(f"[{time.ctime()}] HTTP 429: Rate limited. Retrying in {retry_after} seconds...")
+                    print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] HTTP 429: Rate limited. Retrying in {retry_after} seconds...")
                     time.sleep(retry_after)
                 else:
-                    print(f"[{time.ctime()}] HTTP Error: {e}")
+                    print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] HTTP Error: {e}")
                     return album_ids  # Return whatever data was collected
             except requests.exceptions.RequestException as e:
-                print(f"[{time.ctime()}] Request error: {e}")
+                print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Request error: {e}")
 
         time.sleep(2 ** attempt)  # Exponential backoff
 
@@ -283,7 +284,7 @@ def dump_tracks(conn, cursor, tracks):
     Inserts track information into the database.
     """
 
-    if DEBUG: print(f"[{time.ctime()}] Dumping {len(tracks)} tracks...")
+    if DEBUG: print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Dumping {len(tracks)} tracks...")
 
     with conn:
         # Insert into the Track table
@@ -315,7 +316,7 @@ def dump_albums(conn, cursor, albums):
     Inserts album information into the database.
     """
 
-    if DEBUG: print(f"[{time.ctime()}] Dumping {len(albums)} albums...")
+    if DEBUG: print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Dumping {len(albums)} albums...")
 
     with conn:
         # Insert into the Album table
@@ -347,7 +348,7 @@ def dump_artists(conn, cursor, artists):
     Inserts artist information into the database.
     """
 
-    if DEBUG: print(f"[{time.ctime()}] Dumping {len(artists)} artists...")
+    if DEBUG: print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Dumping {len(artists)} artists...")
 
     with conn:
         # Insert into the Artist table
@@ -368,12 +369,12 @@ def dump_artist_albums(conn, cursor, artist_id):
     album_ids = get_artist_albums(artist_id)
 
     if not album_ids:
-        if DEBUG: print(f"[{time.ctime()}] No albums found for artist: {artist_id}")
+        if DEBUG: print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] No albums found for artist: {artist_id}")
         cursor.execute('UPDATE Artist SET retrieved_albums = 1 WHERE id = ?', (artist_id,))
         conn.commit()
         return
 
-    if DEBUG: print(f"[{time.ctime()}] Fetching {len(album_ids)} albums for artist: {artist_id} in batches...")
+    if DEBUG: print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Fetching {len(album_ids)} albums for artist: {artist_id} in batches...")
 
     # Process album IDs in batches of 20 (Spotify's batch limit)
     batch_size = 20
@@ -384,7 +385,7 @@ def dump_artist_albums(conn, cursor, artist_id):
         album_data = get_batch_info('album', batch)
 
         if album_data and 'albums' in album_data:
-            if DEBUG: print(f"[{time.ctime()}] Dumping {len(album_data['albums'])} albums for artist: {artist_id}")
+            if DEBUG: print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Dumping {len(album_data['albums'])} albums for artist: {artist_id}")
             dump_albums(conn, cursor, album_data['albums'])
 
     # Mark the artist as having retrieved albums
@@ -557,7 +558,7 @@ if __name__ == "__main__":
 
             # Tracks
             if check_type == 'tracks':
-                print(f"[{time.ctime()}] Fetching tracks...")
+                print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Fetching tracks...")
                 i = 1
                 while True:
                     # Scan database for tracks with no info
@@ -569,18 +570,18 @@ if __name__ == "__main__":
                         track_batch = get_batch_info('track', track_ids)
                         if track_batch is not None: dump_tracks(conn, cursor, track_batch['tracks'])
                     else: 
-                        print(f"[{time.ctime()}] No tracks to update, moving on...")
+                        print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] No tracks to update, moving on...")
                         check_type = 'albums'
                         break
                     if i % 10 == 0: # Print progress every 10 batches
                         cursor.execute('''SELECT COUNT(id) FROM Track WHERE name IS NULL''')
                         tracks_remaining = cursor.fetchone()[0]
-                        print(f"[{time.ctime()}] Tracks remaining: {tracks_remaining}")
+                        print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Tracks remaining: {tracks_remaining}")
                     i += 1
 
             # Albums
             if check_type == 'albums':
-                print(f"[{time.ctime()}] Fetching albums...")
+                print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Fetching albums...")
                 i = 1
                 while True:
                     # Scan database for albums with no info
@@ -592,18 +593,18 @@ if __name__ == "__main__":
                         album_batch = get_batch_info('album', album_ids)
                         if album_batch is not None: dump_albums(conn, cursor, album_batch['albums'])
                     else:
-                        print(f"[{time.ctime()}] No albums to update, moving on...")
+                        print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] No albums to update, moving on...")
                         check_type = 'artists'
                         break
                     if i % 10 == 0: # Print progress every 10 batches
                         cursor.execute('''SELECT COUNT(id) FROM Album WHERE name IS NULL''')
                         albums_remaining = cursor.fetchone()[0]
-                        print(f"[{time.ctime()}] Albums remaining: {albums_remaining}")
+                        print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Albums remaining: {albums_remaining}")
                     i += 1
 
             # Artists
             if check_type == 'artists':
-                print(f"[{time.ctime()}] Fetching artists...")
+                print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Fetching artists...")
                 i = 1
                 while True:
                     # Scan database for artists with no info
@@ -615,13 +616,13 @@ if __name__ == "__main__":
                         artist_batch = get_batch_info('artist', artist_ids)
                         if artist_batch is not None: dump_artists(conn, cursor, artist_batch['artists'])
                     else: 
-                        print(f"[{time.ctime()}] No artists to update, moving on...")
+                        print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] No artists to update, moving on...")
                         check_type = 'tracks'
                         break
                     if i % 10 == 0: # Print progress every 10 batches
                         cursor.execute('''SELECT COUNT(id) FROM Artist WHERE name IS NULL''')
                         artists_remaining = cursor.fetchone()[0]
-                        print(f"[{time.ctime()}] Artists remaining: {artists_remaining}")
+                        print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Artists remaining: {artists_remaining}")
                     i += 1
 
             # Albums from Artists (high request rate)
@@ -636,13 +637,13 @@ if __name__ == "__main__":
                         for artist_id in artist_ids:
                             dump_artist_albums(conn, cursor, artist_id)
                     else: 
-                        print(f"[{time.ctime()}] No artists's albums to update, moving on...")
+                        print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] No artists's albums to update, moving on...")
                         check_type = 'tracks'
                         break
                     if i % 2 == 0: 
                         cursor.execute('''SELECT COUNT(id) FROM Artist WHERE retrieved_albums IS 0''')
                         artists_remaining = cursor.fetchone()[0]
-                        print(f"[{time.ctime()}] Artists remaining: {artists_remaining}")
+                        print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Artists remaining: {artists_remaining}")
                     i += 1
 
             # Check type defaults to tracks
@@ -657,13 +658,13 @@ if __name__ == "__main__":
             cursor.execute("SELECT COUNT(id) FROM Artist WHERE name IS NULL OR retrieved_albums = 0")
             if cursor.fetchone()[0] > 0: continue
 
-            print(f"[{time.ctime()}] All items updated.")
+            print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] All items updated.")
             break
     except KeyboardInterrupt:
-        print(f"[{time.ctime()}] Exiting...")
+        print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Exiting...")
     finally:
         conn.commit()
         conn.close()
         save_request_log()
-        print(f"[{time.ctime()}] Database connection closed.")
-        print(f"[{time.ctime()}] Request log saved.")
+        print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Database connection closed.")
+        print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Request log saved.")
