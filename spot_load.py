@@ -556,10 +556,9 @@ if __name__ == "__main__":
 
     # Loop until all queues are empty
     check_type = input("Start at (tracks, albums, artists): ")
-    skip_albums = input("Skip fetching artist's discography? (y/n): ") in ('y', 'yes')
+    check_albums = input("Skip fetching artist's discography? (y/n): ").lower() in ('n', 'no') # Reverse bool so albums are skipped by default
     try:
         while True:
-
             # Tracks
             if check_type == 'tracks':
                 print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Fetching tracks...")
@@ -630,11 +629,11 @@ if __name__ == "__main__":
                     i += 1
 
             # Albums from Artists (high request rate)
-            if not skip_albums:
+            if check_albums:
                 i = 1
                 while True:
                     # Scan database for artists whose albums have not been checked yet
-                    cursor.execute('SELECT id FROM Artist WHERE retrieved_albums IS 0 LIMIT 50')
+                    cursor.execute('SELECT id FROM Artist WHERE retrieved_albums IS 0 ORDER BY popularity LIMIT 10')
                     artist_ids = [row[0] for row in cursor.fetchall()]
 
                     if len(artist_ids) > 0:
@@ -644,7 +643,7 @@ if __name__ == "__main__":
                         print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] No artists's albums to update, moving on...")
                         check_type = 'tracks'
                         break
-                    if i % 2 == 0: 
+                    if i % 2 == 0: # Print every 20 artists
                         cursor.execute('''SELECT COUNT(id) FROM Artist WHERE retrieved_albums IS 0''')
                         artists_remaining = cursor.fetchone()[0]
                         print(f"[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Artists remaining: {artists_remaining}")
