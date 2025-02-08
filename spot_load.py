@@ -392,13 +392,11 @@ def dump_artist_albums(conn, cursor, artist_id):
     cursor.execute('UPDATE Artist SET retrieved_albums = 1 WHERE id = ?', (artist_id,))
     conn.commit()
 
-def create_tables(cursor): # Deprecated (SQL schema changed)
+def create_tables(cursor):
     """
     Creates the necessary tables for the music database if they do not already exist.
     """
-    # Track table: id, name, album_id, duration, popularity, explicit, track_number 
-    #   connected to Artist by TrackArtist connector table
-    #   connected to Album by album_id
+    # Track table: Stores track details and links to albums and artists
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS Track (
             id TEXT PRIMARY KEY,
@@ -407,13 +405,12 @@ def create_tables(cursor): # Deprecated (SQL schema changed)
             duration INTEGER,
             popularity INTEGER,
             explicit INTEGER,
-            track_number INTEGER
+            track_number INTEGER,
+            FOREIGN KEY (album_id) REFERENCES Album(id)
         )
     ''')
 
-    # Album table: id, name, release_date, total_tracks, label, album_type, popularity 
-    #   connected to Artist by AlbumArtist connector table
-    #   connected to Track by album_id
+    # Album table: Stores album details and links to artists
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS Album (
             id TEXT PRIMARY KEY,
@@ -425,30 +422,37 @@ def create_tables(cursor): # Deprecated (SQL schema changed)
             popularity INTEGER
         )
     ''')
-    
-    # Artist table: id, name, popularity, followers
-    #   connected to Track by TrackArtist connector table
-    #   connected to Album by AlbumArtist connector table
-    #   connected to Genre by ArtistGenre connector table
+
+    # Artist table: Stores artist details
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS Artist (
             id TEXT PRIMARY KEY,
             name TEXT,
             popularity INTEGER,
-            followers INTEGER
+            followers INTEGER,
+            retrieved_albums INTEGER DEFAULT 0,
+            country_id INTEGER,
+            FOREIGN KEY (country_id) REFERENCES Country(id)
         )
     ''')
 
-    # Genre table: id, name
-    #   connected to Artist by ArtistGenre connector table
+    # Country table: Stores country details
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS Country (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL
+        )
+    ''')
+
+    # Genre table: Stores unique music genres
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS Genre (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE
+            name TEXT UNIQUE NOT NULL
         )
     ''')
 
-    # Create a connector table for the many-to-many relationship between tracks and artists
+    # TrackArtist: Many-to-many relationship between tracks and artists
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS TrackArtist (
             track_id TEXT,
@@ -459,7 +463,7 @@ def create_tables(cursor): # Deprecated (SQL schema changed)
         )
     ''')
 
-    # Create a connector table for the many-to-many relationship between albums and artists
+    # AlbumArtist: Many-to-many relationship between albums and artists
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS AlbumArtist (
             album_id TEXT,
@@ -470,7 +474,7 @@ def create_tables(cursor): # Deprecated (SQL schema changed)
         )
     ''')
 
-    # Create a connector table for the many-to-many relationship between artists and genres
+    # ArtistGenre: Many-to-many relationship between artists and genres
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS ArtistGenre (
             artist_id TEXT,
@@ -479,31 +483,6 @@ def create_tables(cursor): # Deprecated (SQL schema changed)
             FOREIGN KEY (artist_id) REFERENCES Artist(id),
             FOREIGN KEY (genre_id) REFERENCES Genre(id)
         )
-    ''')
-
-def delete_tables(cursor):
-    """
-    Deletes the following tables from the music database:
-    - Track
-    - Album
-    - Artist
-    - Genre
-    - TrackArtist
-    - AlbumArtist
-    - ArtistGenre
-
-    Args:
-        cursor (sqlite3.Cursor): The database cursor used to execute SQL commands.
-    """
-    
-    cursor.executescript('''
-        DROP TABLE IF EXISTS Track;
-        DROP TABLE IF EXISTS Album;
-        DROP TABLE IF EXISTS Artist;
-        DROP TABLE IF EXISTS Genre;
-        DROP TABLE IF EXISTS TrackArtist;
-        DROP TABLE IF EXISTS AlbumArtist;
-        DROP TABLE IF EXISTS ArtistGenre;
     ''')
 
 # Database loader flow
