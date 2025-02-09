@@ -2,7 +2,6 @@ import sqlite3
 import networkx as nx
 import pandas as pd
 import community.community_louvain as community_louvain
-from sklearn.preprocessing import MinMaxScaler
 from pyvis.network import Network
 
 # ---- Set the filters ----
@@ -32,10 +31,10 @@ with sqlite3.connect("db/spotify.sqlite") as conn:
     AND a1.popularity > :artist_popularity
     AND a2.popularity > :artist_popularity
     GROUP BY a1.name, a2.name
-    HAVING COUNT(*) > :min_col
+    HAVING COUNT(*) > :collaboration_count
     ORDER BY collaboration_count DESC;
     """
-    cursor.execute(query, {"artist_popularity": a_pop, "track_popularity": t_pop, "min_col": min_col})
+    cursor.execute(query, {"artist_popularity": a_pop, "track_popularity": t_pop, "collaboration_count": min_col})
     result = cursor.fetchall()
 
 data_frame = pd.DataFrame(result, columns=["artist_1", "artist_2", "collaboration_count"])
