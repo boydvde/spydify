@@ -1,83 +1,95 @@
 import requests
 import sqlite3
 import time
-import concurrent.futures
+import random
 from collections import deque
 
+BATCH_SIZE = 100
 timestamps = deque()
 
-def get_artist_data_batch(artist_names, retries=3):
-    """
-    Fetches country and genre data for multiple artists in a single MusicBrainz request.
-    """
+def get_artist_data_batch(artist_names, retries=5):
     global timestamps
     cur_time = time.time()
 
+    # Ensure rate limit
     while timestamps and cur_time - timestamps[0] > 1:
         timestamps.popleft()
-
     if len(timestamps) >= 1:
         time.sleep(1 - (cur_time - timestamps[0]))
 
-    query = " OR ".join([f'"{name}"' for name in artist_names])
-    url = f"https://musicbrainz.org/ws/2/artist/"
-    params = {
-        "query": query,
-        "fmt": "json",
-        "limit": 100,
-    }
+    url = "https://musicbrainz.org/ws/2/artist/"
+    headers = {"User-Agent": "WIPArtistMapApp/1.0 (boydbenjamin@live.com)"}
+    query = " OR ".join([f'artist:\"{name}\"' for name in artist_names])  # Just build the query
+    params = {"query": query, "fmt": "json", "limit": BATCH_SIZE}
 
     for attempt in range(retries):
         try:
-            response = requests.get(url, params=params)
+            response = requests.get(url, headers=headers, params=params)
             response.raise_for_status()
+
+            timestamps.append(time.time())
             data = response.json()
 
-            artist_info = {}
+            # Check for missing artists in response
+            returned_artists = {artist["name"] for artist in data.get("artists", [])}
+            missing_artists = set(artist_names) - returned_artists
+            if missing_artists: print(f"Missing artists in response: {missing_artists}")
+
+            organized_data = {}
+
             for artist in data.get("artists", []):
-                name = artist.get("name", "Unknown")
-                country = artist.get("country", "Unknown")
-                tags = [tag["name"] for tag in artist.get("tags", [])] if "tags" in artist else ["unknown"]
-                artist_info[name] = (country, tags)
+                name = artist["name"]
+                area_info = artist.get("area") or artist.get("begin-area")
+                area_name = area_info.get("name", "Unknown") if area_info else "Unknown"
+                area_type = area_info.get("type", "Unknown") if area_info else "Unknown"
+                genres = [tag["name"] for tag in artist.get("tags", [])] if artist.get("tags") else ['Unknown']
+                print(f"Extracted for {name}: ({area_name}, {area_type}), {genres}")
+                organized_data[name] = ((area_name, area_type), genres)
 
-            return artist_info
+            return organized_data # dict of artist name -> ((area_name, area_type), [genres])
         
-        except requests.RequestException as e:
-            print(f"⚠️ API request failed: {e}")
-            if attempt < retries - 1:
-                time.sleep(2)
-            else:
-                return {name: ("Unknown", ["unknown"]) for name in artist_names}
+        # Retry on failure
+        except requests.exceptions.RequestException as e:
+            print(f"API request failed: {e}")
+            wait_time = 2 ** attempt + random.uniform(0, 1)
+            print(f"Retrying in {wait_time:.2f} seconds...")
+            time.sleep(wait_time)
 
-def fetch_artist_data_parallel(artist_list):
-    """Fetches country and genre data for multiple artists in parallel."""
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        results = executor.map(get_artist_data_batch, [artist_list[i:i+100] for i in range(0, len(artist_list), 100)])
-    
-    artist_data = {}
-    for batch in results:
-        artist_data.update(batch)
-    
-    return artist_data
+    # Give up after multiple failures
+    print("Giving up after multiple failures.")
+    return {}
 
 def save_artist_data_to_db(cursor, artist_data, fetched_data):
-    """Saves artist country and genre data into SQLite in bulk."""
-    genre_insert = set()
-    artist_genre_insert = []
-
+    """
+    Saves artist area and genre data into SQLite in bulk.
+    """
     for (artist_id, artist_name) in artist_data:
-        country, genres = fetched_data.get(artist_name, ("Unknown", ["unknown"]))
-        cursor.execute("UPDATE Artist SET country = ? WHERE id = ?", (country, artist_id))
+        area, genres = fetched_data.get(artist_name, (("Unknown", "Unknown"), ['Unknown']))  # Kind of redundant, but just in case
 
+        # Insert the area if it does not exist, then fetch the ID
+        cursor.execute("INSERT OR IGNORE INTO Area (name, type) VALUES (?, ?)", (area[0], area[1]))
+        cursor.execute("SELECT id FROM Area WHERE name = ? AND type = ?", (area[0], area[1]))
+        area_row = cursor.fetchone()
+        if area_row is None:
+            print(f"Failed to fetch area_id for area: {area}")
+            continue
+        area_id = area_row[0]
+
+        # Update the Artist table with the area_id
+        cursor.execute("UPDATE Artist SET area_id = ? WHERE id = ?", (area_id, artist_id))
+
+        # Insert genres
         for genre in genres:
-            genre_insert.add((genre,))
-            artist_genre_insert.append((artist_id, genre))
+            cursor.execute("INSERT OR IGNORE INTO Genre (name) VALUES (?)", (genre,))
+            cursor.execute("SELECT id FROM Genre WHERE name = ?", (genre,))
+            genre_row = cursor.fetchone()
+            if genre_row is None:
+                print(f"Failed to fetch genre_id for genre: {genre}")
+                continue
+            genre_id = genre_row[0]
 
-    cursor.executemany("INSERT OR IGNORE INTO Genre (name) VALUES (?)", genre_insert)
-    cursor.executemany("""
-        INSERT OR IGNORE INTO ArtistGenre (artist_id, genre_id)
-        VALUES (?, (SELECT id FROM Genre WHERE name = ?))
-    """, artist_genre_insert)
+            # Insert artist-genre relationships
+            cursor.execute("INSERT OR IGNORE INTO ArtistGenre (artist_id, genre_id) VALUES (?, ?)", (artist_id, genre_id))
 
 if __name__ == "__main__":
     try:
@@ -85,34 +97,42 @@ if __name__ == "__main__":
         cursor = conn.cursor()
 
         while True:
+            # SELECT artists without area or genre data
             cursor.execute("""
-                SELECT id, name FROM Artist 
-                WHERE country IS NULL OR id NOT IN (SELECT DISTINCT artist_id FROM ArtistGenre)
-                LIMIT 100;
-            """)
+                SELECT A.id, A.name
+                FROM Artist A
+                LEFT JOIN ArtistGenre AG ON A.id = AG.artist_id
+                WHERE (A.area_id IS NULL OR AG.artist_id IS NULL) 
+                AND A.name IS NOT NULL
+                LIMIT ?;
+            """, (BATCH_SIZE,))
             artist_batch = cursor.fetchall()
 
+            # Exit if no more artists to process
             if not artist_batch:
-                print("✅ All artist data updated!")
+                print("All artist data updated!")
                 break
 
-            artist_names = [name for _, name in artist_batch]
-            fetched_results = fetch_artist_data_parallel(artist_names)
+            artist_names = [name for _, name in artist_batch]  # Extract artist names for lookup
+            fetched_results = get_artist_data_batch(artist_names)  # Fetch data from MusicBrainz
 
             save_artist_data_to_db(cursor, artist_batch, fetched_results)
             conn.commit()
 
+            # Print progress
             cursor.execute("""
-                SELECT COUNT(*) FROM Artist
-                WHERE country IS NULL OR id NOT IN (SELECT DISTINCT artist_id FROM ArtistGenre);
+                SELECT COUNT(A.id)
+                FROM Artist A
+                LEFT JOIN ArtistGenre AG ON A.id = AG.artist_id
+                WHERE (A.area_id IS NULL OR AG.artist_id IS NULL) 
+                AND A.name IS NOT NULL;
             """)
             total = cursor.fetchone()[0]
-
             print(f"Processed {len(artist_batch)} artists, {total} remaining.")
 
-        conn.close()
-    
     except KeyboardInterrupt:
+        print("Process interrupted. Progress saved.")
+    
+    finally:
         conn.commit()
         conn.close()
-        print("Process interrupted. Progress saved.")
