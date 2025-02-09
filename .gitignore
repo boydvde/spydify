@@ -5,4 +5,5 @@ __pycache__/
 temp/
 db/
 debug/
-notebooks/lib
+output/
+lib/
