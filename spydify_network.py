@@ -5,11 +5,13 @@ import community.community_louvain as community_louvain
 from sklearn.preprocessing import MinMaxScaler
 from pyvis.network import Network
 
-# ---- Load the data ----
+# ---- Set the filters ----
 
 a_pop = 70 # Minimum artist popularity threshold
 t_pop = 50 # Minimum track popularity threshold
 min_col = 3 # Minimum collaborations threshold
+
+# ---- Load the data ----
 
 # Load data with optimized SQL query
 with sqlite3.connect("db/spotify.sqlite") as conn:
@@ -61,8 +63,15 @@ partition = community_louvain.best_partition(G_filtered)
 def visualize_graph_pyvis(G: nx.Graph, partition, degree_centrality):
     net = Network(notebook=True, width="100%", height="700px", bgcolor="#222222", font_color="white")
     
-    color_map = ["#FF5733", "#33FF57", "#3357FF", "#FF33A8", "#A833FF", "#FF8C33"]
-    
+    color_map = [
+        "#FF5733", "#33FF57", "#3357FF", "#FF33A8", "#A833FF", "#FF8C33",
+        "#33FFA8", "#A8FF33", "#5733FF", "#FF338C", "#33A8FF", "#8CFF33",
+        "#FF33F5", "#33FFF5", "#FF5733", "#A833FF", "#FF33A8", "#338CFF",
+        "#FF8C57", "#57FF8C", "#8C33FF", "#FF5733", "#A8FF57", "#33FFA8",
+        "#8CFF57", "#FF338C", "#5733FF", "#FF57A8", "#A8FF33", "#33A8FF",
+        "#FF8C33", "#8C33FF", "#33FFA8", "#FF33A8", "#A833FF", "#57FF33"
+    ]
+        
     for node in G.nodes():
         color = color_map[partition[node] % len(color_map)]  # Assign community color
         size = 5 + degree_centrality[node] * 20  # Scale node size based on centrality
