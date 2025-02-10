@@ -535,7 +535,7 @@ if __name__ == "__main__":
 
     # Loop until all queues are empty
     check_type = input("Start at (tracks, albums, artists): ")
-    check_albums = input("Skip fetching artist's discography? (y/n): ").lower() in ('n', 'no') # Reverse bool so albums are skipped by default
+    check_albums = input("Fetch artist's discography? (y/n): ").lower() in ('y', 'yes') # Reverse bool so albums are skipped by default
     try:
         while True:
             # Tracks
