@@ -612,7 +612,7 @@ if __name__ == "__main__":
                 i = 1
                 while True:
                     # Scan database for artists whose albums have not been checked yet
-                    cursor.execute('SELECT id FROM Artist WHERE retrieved_albums IS 0 ORDER BY popularity LIMIT 10')
+                    cursor.execute('SELECT id FROM Artist WHERE retrieved_albums = 0 AND name IS NOT NULL ORDER BY popularity LIMIT 10')
                     artist_ids = [row[0] for row in cursor.fetchall()]
 
                     if len(artist_ids) > 0:
