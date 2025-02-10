@@ -8,56 +8,62 @@ BATCH_SIZE = 100
 timestamps = deque()
 
 def get_artist_data_batch(artist_names, retries=5):
+    """
+    Fetch artist data from MusicBrainz API one by one instead of in a batch.
+    """
     global timestamps
-    cur_time = time.time()
-
-    # Ensure rate limit
-    while timestamps and cur_time - timestamps[0] > 1:
-        timestamps.popleft()
-    if len(timestamps) >= 1:
-        time.sleep(1 - (cur_time - timestamps[0]))
+    organized_data = {}
 
     url = "https://musicbrainz.org/ws/2/artist/"
     headers = {"User-Agent": "WIPArtistMapApp/1.0 (boydbenjamin@live.com)"}
-    query = " OR ".join([f'artist:\"{name}\"' for name in artist_names])  # Just build the query
-    params = {"query": query, "fmt": "json", "limit": BATCH_SIZE}
 
-    for attempt in range(retries):
-        try:
-            response = requests.get(url, headers=headers, params=params)
-            response.raise_for_status()
+    for artist_name in artist_names:
+        cur_time = time.time()
 
-            timestamps.append(time.time())
-            data = response.json()
+        # Ensure rate limit (1 request per second)
+        while timestamps and cur_time - timestamps[0] > 1:
+            timestamps.popleft()
+        if len(timestamps) >= 1:
+            time.sleep(1 - (cur_time - timestamps[0]))
 
-            # Check for missing artists in response
-            returned_artists = {artist["name"] for artist in data.get("artists", [])}
-            missing_artists = set(artist_names) - returned_artists
-            if missing_artists: print(f"Missing artists in response: {missing_artists}")
+        params = {"query": f'artist:"{artist_name}"', "fmt": "json", "limit": 5}  # Fetch a few results
 
-            organized_data = {}
+        for attempt in range(retries):
+            try:
+                response = requests.get(url, headers=headers, params=params)
+                response.raise_for_status()
+                timestamps.append(time.time())
+                data = response.json()
 
-            for artist in data.get("artists", []):
-                name = artist["name"]
-                area_info = artist.get("area") or artist.get("begin-area")
-                area_name = area_info.get("name", "Unknown") if area_info else "Unknown"
-                area_type = area_info.get("type", "Unknown") if area_info else "Unknown"
-                genres = [tag["name"] for tag in artist.get("tags", [])] if artist.get("tags") else ['Unknown']
-                print(f"Extracted for {name}: ({area_name}, {area_type}), {genres}")
-                organized_data[name] = ((area_name, area_type), genres)
+                # Filter for exact match
+                for artist in data.get("artists", []):
+                    if artist["name"].lower() == artist_name.lower():  # Ensure exact match
+                        area_info = artist.get("area") or artist.get("begin-area")
+                        area_name = area_info.get("name", "Unknown") if area_info else "Unknown"
+                        area_type = area_info.get("type", "Unknown") if area_info else "Unknown"
+                        genres = [tag["name"] for tag in artist.get("tags", [])] if artist.get("tags") else ['Unknown']
 
-            return organized_data # dict of artist name -> ((area_name, area_type), [genres])
-        
-        # Retry on failure
-        except requests.exceptions.RequestException as e:
-            print(f"API request failed: {e}")
-            wait_time = 2 ** attempt + random.uniform(0, 1)
-            print(f"Retrying in {wait_time:.2f} seconds...")
-            time.sleep(wait_time)
+                        print(f"Extracted for {artist_name}: ({area_name}, {area_type}), {genres}")
+                        organized_data[artist_name] = ((area_name, area_type), genres)
+                        break  # Stop checking after finding an exact match
 
-    # Give up after multiple failures
-    print("Giving up after multiple failures.")
-    return {}
+                if artist_name not in organized_data:
+                    print(f"Exact match not found for {artist_name}.")
+
+                break  # Exit retry loop on success
+
+            except requests.exceptions.RequestException as e:
+                print(f"API request failed for {artist_name}: {e}")
+                wait_time = 2 ** attempt + random.uniform(0, 1)
+                print(f"Retrying in {wait_time:.2f} seconds...")
+                time.sleep(wait_time)
+
+    # Log missing artists
+    missing_artists = set(artist_names) - set(organized_data.keys())
+    if missing_artists:
+        print(f"Missing artists in response: {missing_artists}")
+
+    return organized_data
 
 def save_artist_data_to_db(cursor, artist_data, fetched_data):
     """
