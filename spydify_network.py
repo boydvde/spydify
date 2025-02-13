@@ -3,12 +3,13 @@ import networkx as nx
 import pandas as pd
 import community.community_louvain as community_louvain
 from pyvis.network import Network
+from networkx.algorithms.coloring import greedy_color
 
 # ---- Set the filters ----
 
-a_pop = 70 # Minimum artist popularity threshold
-t_pop = 50 # Minimum track popularity threshold
-min_col = 3 # Minimum collaborations threshold
+a_pop = 70  # Minimum artist popularity threshold
+t_pop = 50  # Minimum track popularity threshold
+min_col = 3  # Minimum collaborations threshold
 
 # ---- Load the data ----
 
@@ -57,22 +58,39 @@ betweenness_centrality = nx.betweenness_centrality(G_filtered, weight="weight")
 # Community detection using Louvain method
 partition = community_louvain.best_partition(G_filtered)
 
+# ---- Ensure adjacent communities have different colors ----
+
+# Create a meta-graph where each node represents a community
+community_graph = nx.Graph()
+
+# Add community nodes
+for community in set(partition.values()):
+    community_graph.add_node(community)
+
+# Add edges between communities if there's a connection in the original graph
+for node1, node2 in G_filtered.edges():
+    comm1, comm2 = partition[node1], partition[node2]
+    if comm1 != comm2:
+        community_graph.add_edge(comm1, comm2)
+
+# Apply graph coloring to the community graph
+community_colors = greedy_color(community_graph, strategy="largest_first")
+
+# Define a color palette
+color_map = [
+    "#FF5733", "#33FF57", "#3357FF", "#FF33A8", "#A833FF", "#FF8C33",
+    "#33FFA8", "#A8FF33", "#5733FF", "#FF338C", "#33A8FF", "#8CFF33",
+    "#FF33F5", "#33FFF5", "#FF5733", "#A833FF", "#FF33A8", "#338CFF"
+]
+
 # ---- Visualize the graph ----
 
-def visualize_graph_pyvis(G: nx.Graph, partition, degree_centrality):
+def visualize_graph_pyvis(G: nx.Graph, partition, degree_centrality, community_colors):
     net = Network(notebook=True, width="100%", height="700px", bgcolor="#222222", font_color="white")
     
-    color_map = [
-        "#FF5733", "#33FF57", "#3357FF", "#FF33A8", "#A833FF", "#FF8C33",
-        "#33FFA8", "#A8FF33", "#5733FF", "#FF338C", "#33A8FF", "#8CFF33",
-        "#FF33F5", "#33FFF5", "#FF5733", "#A833FF", "#FF33A8", "#338CFF",
-        "#FF8C57", "#57FF8C", "#8C33FF", "#FF5733", "#A8FF57", "#33FFA8",
-        "#8CFF57", "#FF338C", "#5733FF", "#FF57A8", "#A8FF33", "#33A8FF",
-        "#FF8C33", "#8C33FF", "#33FFA8", "#FF33A8", "#A833FF", "#57FF33"
-    ]
-        
     for node in G.nodes():
-        color = color_map[partition[node] % len(color_map)]  # Assign community color
+        community_id = partition[node]
+        color = color_map[community_colors[community_id] % len(color_map)]  # Assign distinct community color
         size = 5 + degree_centrality[node] * 20  # Scale node size based on centrality
         net.add_node(node, title=node, color=color, size=size)
     
@@ -92,4 +110,4 @@ def visualize_graph_pyvis(G: nx.Graph, partition, degree_centrality):
     
     net.show("output/artist_network.html")
 
-visualize_graph_pyvis(G_filtered, partition, degree_centrality)
+visualize_graph_pyvis(G_filtered, partition, degree_centrality, community_colors)
