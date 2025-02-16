@@ -9,7 +9,7 @@ timestamps = deque()
 
 def get_artist_data_batch(artist_names, retries=5):
     """
-    Fetch artist data from MusicBrainz API one by one instead of in a batch.
+    Fetch artist data from MusicBrainz API one by one bc reasons.
     """
     global timestamps
     organized_data = {}
@@ -108,8 +108,9 @@ if __name__ == "__main__":
                 SELECT A.id, A.name
                 FROM Artist A
                 LEFT JOIN ArtistGenre AG ON A.id = AG.artist_id
-                WHERE (A.area_id IS NULL OR AG.artist_id IS NULL) 
-                AND A.name IS NOT NULL
+                WHERE A.name IS NOT NULL 
+                AND (A.area_id IS NULL OR AG.artist_id IS NULL)
+                ORDER BY A.popularity DESC
                 LIMIT ?;
             """, (BATCH_SIZE,))
             artist_batch = cursor.fetchall()
